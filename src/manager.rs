@@ -1,48 +1,63 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
 
 use crate::channel::AtomicChannel;
 
+type Job = Box<dyn FnOnce() + Send + 'static>;
+
 pub struct ThreadManager {
-    channel: Arc<AtomicChannel<Box<dyn FnOnce() + Send>>>,
+    thread_size: usize,
+    channel: Arc<AtomicChannel<Job>>,
     workers: Vec<ThreadWorker>,
-    is_terminated: AtomicBool,
+    dispatch_worker: AtomicUsize,
 }
 
 impl ThreadManager {
     pub fn new(thread_size: usize) -> Self {
-        let channel: Arc<AtomicChannel<Box<dyn FnOnce() + Send>>> = Arc::new(AtomicChannel::new());
-        let workers: Vec<ThreadWorker> = Self::get_workers(thread_size, channel.clone());
-        let is_terminated: AtomicBool = AtomicBool::new(true);
+        let channel: Arc<AtomicChannel<Job>> = Arc::new(AtomicChannel::new());
+        let workers: Vec<ThreadWorker> = Self::create_workers(thread_size, channel.clone());
+        let dispatch_worker: AtomicUsize = AtomicUsize::new(0);
 
         ThreadManager {
+            thread_size,
             channel,
             workers,
-            is_terminated,
+            dispatch_worker,
         }
     }
 
-    pub fn execute<F>(&self, f: F)
+    pub fn execute<F>(&self, function: F)
     where
         F: FnOnce() + Send + 'static,
     {
-        let job: Box<dyn FnOnce() + Send + 'static> = Box::new(f);
-        self.channel
-            .send(job)
-            .expect("Failed to send job to Thread Manager");
-
-        if self.is_terminated() {
-            self.start_workers();
-        }
+        let dispatch_worker: usize = self.dispatch_worker.load(Ordering::Acquire);
+        let worker: &ThreadWorker = &self.workers[dispatch_worker];
+        worker.send(function);
+        self.update_dispatch_worker(dispatch_worker);
     }
 
     pub fn join(&self) {
-        while self.get_job_queue() > 0 && self.get_busy_threads() > 0 {
-            thread::sleep(Duration::from_micros(1));
+        for worker in self.workers.iter() {
+            worker.send_join_signal();
         }
-        self.terminate_all();
+
+        for worker in self.workers.iter() {
+            worker.join();
+        }
+    }
+
+    pub fn terminate_all(&self) {
+        for worker in self.workers.iter() {
+            worker.send_termination_signal();
+        }
+
+        for worker in self.workers.iter() {
+            worker.join();
+        }
+
+        self.clear_job_queue();
     }
 
     pub fn get_active_threads(&self) -> usize {
@@ -74,61 +89,59 @@ impl ThreadManager {
         self.channel.clear_receiver();
     }
 
-    pub fn terminate_all(&self) {
-        for worker in self.workers.iter() {
-            worker.send_termination_signal();
+    pub fn modify_thread_size(&mut self, thread_size: usize) {
+        if thread_size > self.workers.len() {
+            let additional_threads: usize = thread_size - self.workers.len();
+            let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
+            let workers: Vec<ThreadWorker> = Self::create_workers(additional_threads, channel);
+            self.workers.extend(workers);
+        } else if thread_size < self.workers.len() {
+            let split_workers: Vec<ThreadWorker> = self.workers.split_off(thread_size);
+            for worker in split_workers.iter() {
+                worker.send_termination_signal();
+            }
         }
-
-        for worker in self.workers.iter() {
-            worker.wait_for_termination();
-        }
-
-        self.is_terminated.store(true, Ordering::Release);
-        self.clear_job_queue();
-    }
-
-    pub fn is_terminated(&self) -> bool {
-        let is_terminated: bool = self.is_terminated.load(Ordering::Acquire);
-        is_terminated
     }
 }
 
 impl ThreadManager {
-    fn get_workers(
-        thread_size: usize,
-        channel: Arc<AtomicChannel<Box<dyn FnOnce() + Send>>>,
-    ) -> Vec<ThreadWorker> {
+    fn create_workers(thread_size: usize, channel: Arc<AtomicChannel<Job>>) -> Vec<ThreadWorker> {
         let mut workers: Vec<ThreadWorker> = Vec::with_capacity(thread_size);
 
         for id in 0..thread_size {
             let worker: ThreadWorker = ThreadWorker::new(id, channel.clone());
+            worker.start();
             workers.push(worker);
         }
         workers
     }
 
-    fn start_workers(&self) {
-        self.is_terminated.store(false, Ordering::Release);
-        for worker in self.workers.iter() {
-            worker.start();
-        }
+    fn update_dispatch_worker(&self, dispatch_worker: usize) {
+        let next_dispatch: usize = if dispatch_worker >= (self.thread_size - 1) {
+            0
+        } else {
+            dispatch_worker + 1
+        };
+        self.dispatch_worker.store(next_dispatch, Ordering::Release);
     }
 }
 
 struct ThreadWorker {
     id: usize,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
-    channel: Arc<AtomicChannel<Box<dyn FnOnce() + Send>>>,
+    channel: Arc<AtomicChannel<Job>>,
     is_active: Arc<AtomicBool>,
     is_busy: Arc<AtomicBool>,
+    join_signal: Arc<AtomicBool>,
     termination_signal: Arc<AtomicBool>,
 }
 
 impl ThreadWorker {
-    pub fn new(id: usize, channel: Arc<AtomicChannel<Box<dyn FnOnce() + Send>>>) -> Self {
+    fn new(id: usize, channel: Arc<AtomicChannel<Job>>) -> Self {
         let thread: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
         let is_active: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let is_busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let join_signal: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let termination_signal: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
         ThreadWorker {
@@ -137,17 +150,19 @@ impl ThreadWorker {
             channel,
             is_active,
             is_busy,
+            join_signal,
             termination_signal,
         }
     }
 
-    pub fn id(&self) -> usize {
+    fn id(&self) -> usize {
         self.id
     }
 
-    pub fn start(&self) {
+    fn start(&self) {
         if !self.is_active() {
-            let worker_loop = self.get_worker_loop();
+            self.is_active.store(true, Ordering::Release);
+            let worker_loop = self.create_worker_loop();
             let thread: thread::JoinHandle<()> = thread::spawn(worker_loop);
             if let Ok(mut thread_guard) = self.thread.lock() {
                 *thread_guard = Some(thread);
@@ -155,41 +170,64 @@ impl ThreadWorker {
         }
     }
 
-    pub fn is_active(&self) -> bool {
-        let is_active: bool = self.is_active.load(Ordering::Acquire);
-        is_active
+    fn send<F>(&self, function: F)
+    where
+        F: FnOnce() + Send + 'static,
+    {
+        self.start();
+        let job: Job = Box::new(function);
+        self.channel
+            .send(job)
+            .expect(&format!("Failed to send job to Worker [{}]", self.id));
     }
 
-    pub fn is_busy(&self) -> bool {
-        let is_busy: bool = self.is_busy.load(Ordering::Acquire);
-        is_busy
-    }
-
-    pub fn send_termination_signal(&self) {
-        self.termination_signal.store(true, Ordering::Release);
-    }
-
-    pub fn wait_for_termination(&self) {
+    fn join(&self) {
         if let Ok(mut thread_option) = self.thread.lock() {
             if let Some(thread) = thread_option.take() {
                 let _ = thread.join();
             }
         }
-        self.termination_signal.store(false, Ordering::Release);
     }
-}
 
-impl ThreadWorker {
-    fn get_worker_loop(&self) -> impl Fn() {
-        let channel: Arc<AtomicChannel<Box<dyn FnOnce() + Send>>> = self.channel.clone();
+    fn is_active(&self) -> bool {
+        let is_active: bool = self.is_active.load(Ordering::Acquire);
+        is_active
+    }
+
+    fn is_busy(&self) -> bool {
+        let is_busy: bool = self.is_busy.load(Ordering::Acquire);
+        is_busy
+    }
+
+    fn send_join_signal(&self) {
+        self.join_signal.store(true, Ordering::Release);
+    }
+
+    fn send_termination_signal(&self) {
+        self.termination_signal.store(true, Ordering::Release);
+        let closure: Job = Box::new(|| {});
+        self.channel.send(Box::new(closure)).expect(&format!(
+            "Failed to send termination to Worker [{}]",
+            self.id
+        ));
+    }
+
+    fn create_worker_loop(&self) -> impl Fn() {
+        let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
         let is_active: Arc<AtomicBool> = self.is_active.clone();
         let is_busy: Arc<AtomicBool> = self.is_busy.clone();
+        let join_signal: Arc<AtomicBool> = self.join_signal.clone();
         let termination_signal: Arc<AtomicBool> = self.termination_signal.clone();
 
         let worker_loop = move || {
-            let recv_timeout: Duration = Duration::from_micros(1);
-            is_active.store(true, Ordering::Release);
+            let recv_timeout = Duration::from_millis(50);
             while !termination_signal.load(Ordering::Acquire) {
+                if join_signal.load(Ordering::Acquire) {
+                    if channel.get_buffer() == 0 {
+                        break;
+                    }
+                }
+
                 if let Ok(job) = channel.recv_timeout(recv_timeout) {
                     is_busy.store(true, Ordering::Release);
                     job();
@@ -197,6 +235,7 @@ impl ThreadWorker {
                 }
             }
             is_active.store(false, Ordering::Release);
+            termination_signal.store(false, Ordering::Release);
         };
         worker_loop
     }

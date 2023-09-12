@@ -55,6 +55,7 @@ fn pending_thread_metrics(thread_manager: &ThreadManager) {
             break;
         }
     }
+    write_thread_metrics(thread_manager);
 }
 
 fn write_elapsed_time(now: &Instant) {
@@ -64,7 +65,7 @@ fn write_elapsed_time(now: &Instant) {
 
 fn thread_manager_benchmark(values: &Vec<usize>, threads: usize) {
     println!("Benchmarking..\n");
-    let thread_manager: ThreadManager = ThreadManager::new(threads);
+    let mut thread_manager: ThreadManager = ThreadManager::new(threads);
 
     let now: Instant = Instant::now();
 
