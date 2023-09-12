@@ -1,1 +1,1 @@
-# thread-manager-rs
+## `⌽` Thread Manager
