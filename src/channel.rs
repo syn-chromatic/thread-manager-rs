@@ -6,26 +6,29 @@ use std::time::{Duration, Instant};
 pub struct AtomicChannel<T> {
     sender: mpsc::Sender<T>,
     receiver: Mutex<mpsc::Receiver<T>>,
-    buffer: Arc<AtomicUsize>,
+    pending_count: Arc<AtomicUsize>,
+    receive_count: Arc<AtomicUsize>,
 }
 
 impl<T> AtomicChannel<T> {
     pub fn new() -> Self {
         let (sender, receiver): (mpsc::Sender<T>, mpsc::Receiver<T>) = mpsc::channel();
         let receiver: Mutex<mpsc::Receiver<T>> = Mutex::new(receiver);
-        let buffer: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let pending_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let receive_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
         AtomicChannel {
             sender,
             receiver,
-            buffer,
+            pending_count,
+            receive_count,
         }
     }
 
     pub fn send(&self, value: T) -> Result<(), mpsc::SendError<T>> {
         let sent_result: Result<(), mpsc::SendError<T>> = self.sender.send(value);
         if sent_result.is_ok() {
-            self.buffer.fetch_add(1, Ordering::Release);
+            self.pending_count.fetch_add(1, Ordering::Release);
         }
         sent_result
     }
@@ -45,7 +48,8 @@ impl<T> AtomicChannel<T> {
         if let Ok(receiver_guard) = self.receiver.lock() {
             let received_result: Result<T, mpsc::RecvError> = receiver_guard.recv();
             if received_result.is_ok() {
-                self.buffer.fetch_sub(1, Ordering::Release);
+                self.pending_count.fetch_sub(1, Ordering::Release);
+                self.receive_count.fetch_add(1, Ordering::Release);
             }
             return received_result;
         }
@@ -56,7 +60,8 @@ impl<T> AtomicChannel<T> {
         if let Ok(receiver_guard) = self.receiver.lock() {
             let received_result: Result<T, mpsc::TryRecvError> = receiver_guard.try_recv();
             if received_result.is_ok() {
-                self.buffer.fetch_sub(1, Ordering::Release);
+                self.pending_count.fetch_sub(1, Ordering::Release);
+                self.receive_count.fetch_add(1, Ordering::Release);
             }
             return received_result;
         }
@@ -68,16 +73,22 @@ impl<T> AtomicChannel<T> {
             let received_result: Result<T, mpsc::RecvTimeoutError> =
                 receiver_guard.recv_timeout(timeout);
             if received_result.is_ok() {
-                self.buffer.fetch_sub(1, Ordering::Release);
+                self.pending_count.fetch_sub(1, Ordering::Release);
+                self.receive_count.fetch_add(1, Ordering::Release);
             }
             return received_result;
         }
         Err(mpsc::RecvTimeoutError::Disconnected)
     }
 
-    pub fn get_buffer(&self) -> usize {
-        let receive_buffer: usize = self.buffer.load(Ordering::Acquire);
-        receive_buffer
+    pub fn get_pending_count(&self) -> usize {
+        let buffer: usize = self.pending_count.load(Ordering::Acquire);
+        buffer
+    }
+
+    pub fn get_receive_count(&self) -> usize {
+        let received: usize = self.receive_count.load(Ordering::Acquire);
+        received
     }
 
     pub fn clear_receiver(&self) {

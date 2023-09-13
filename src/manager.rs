@@ -48,16 +48,33 @@ impl ThreadManager {
         }
     }
 
-    pub fn terminate_all(&self) {
-        for worker in self.workers.iter() {
-            worker.send_termination_signal();
+    pub fn set_thread_size(&mut self, thread_size: usize) {
+        if thread_size > self.workers.len() {
+            let additional_threads: usize = thread_size - self.workers.len();
+            let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
+            let workers: Vec<ThreadWorker> = Self::create_workers(additional_threads, channel);
+            self.workers.extend(workers);
+        } else if thread_size < self.workers.len() {
+            let split_workers: Vec<ThreadWorker> = self.workers.split_off(thread_size);
+            for worker in split_workers.iter() {
+                worker.send_termination_signal();
+            }
         }
+    }
 
+    pub fn send_join_signals(&self) {
         for worker in self.workers.iter() {
-            worker.join();
+            worker.send_join_signal();
         }
+    }
 
-        self.clear_job_queue();
+    pub fn has_finished(&self) -> bool {
+        for worker in self.workers.iter() {
+            if worker.is_active() {
+                return false;
+            }
+        }
+        true
     }
 
     pub fn get_active_threads(&self) -> usize {
@@ -81,26 +98,24 @@ impl ThreadManager {
     }
 
     pub fn get_job_queue(&self) -> usize {
-        let job_queue: usize = self.channel.get_buffer();
+        let job_queue: usize = self.channel.get_pending_count();
         job_queue
+    }
+
+    pub fn terminate_all(&self) {
+        for worker in self.workers.iter() {
+            worker.send_termination_signal();
+        }
+
+        for worker in self.workers.iter() {
+            worker.join();
+        }
+
+        self.clear_job_queue();
     }
 
     pub fn clear_job_queue(&self) {
         self.channel.clear_receiver();
-    }
-
-    pub fn modify_thread_size(&mut self, thread_size: usize) {
-        if thread_size > self.workers.len() {
-            let additional_threads: usize = thread_size - self.workers.len();
-            let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
-            let workers: Vec<ThreadWorker> = Self::create_workers(additional_threads, channel);
-            self.workers.extend(workers);
-        } else if thread_size < self.workers.len() {
-            let split_workers: Vec<ThreadWorker> = self.workers.split_off(thread_size);
-            for worker in split_workers.iter() {
-                worker.send_termination_signal();
-            }
-        }
     }
 }
 
@@ -199,6 +214,16 @@ impl ThreadWorker {
         is_busy
     }
 
+    fn is_finished(&self) -> bool {
+        if let Ok(thread_option) = self.thread.lock() {
+            if let Some(thread) = thread_option.as_ref() {
+                let is_finished: bool = thread.is_finished();
+                return is_finished;
+            }
+        }
+        false
+    }
+
     fn send_join_signal(&self) {
         self.join_signal.store(true, Ordering::Release);
     }
@@ -220,10 +245,10 @@ impl ThreadWorker {
         let termination_signal: Arc<AtomicBool> = self.termination_signal.clone();
 
         let worker_loop = move || {
-            let recv_timeout = Duration::from_millis(50);
+            let recv_timeout: Duration = Duration::from_micros(1);
             while !termination_signal.load(Ordering::Acquire) {
                 if join_signal.load(Ordering::Acquire) {
-                    if channel.get_buffer() == 0 {
+                    if channel.get_pending_count() == 0 && channel.get_receive_count() > 0 {
                         break;
                     }
                 }
