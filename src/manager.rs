@@ -270,14 +270,15 @@ impl ThreadWorker {
         if !self.is_active() {
             if let Ok(mut thread_guard) = self.thread.lock() {
                 if let Some(existing_thread) = thread_guard.take() {
-                    if !existing_thread.is_finished() {
-                        self.send_termination_signal();
-                    }
                     let _ = existing_thread.join();
                     if self.channel.get_pending_count() == 0 {
                         return;
                     }
                 }
+                let is_active: Arc<AtomicBool> = self.is_active.clone();
+                let active_threads: Arc<AtomicUsize> = self.active_threads.clone();
+                Self::set_worker_active(&is_active, &active_threads);
+
                 let worker_loop = self.create_worker_loop();
                 let thread: thread::JoinHandle<()> = thread::spawn(worker_loop);
                 *thread_guard = Some(thread);
@@ -399,7 +400,6 @@ impl ThreadWorker {
         let termination_signal: Arc<AtomicBool> = self.termination_signal.clone();
 
         let worker_loop = move || {
-            Self::set_worker_active(&is_active, &active_threads);
             while !termination_signal.load(Ordering::Acquire) {
                 if join_signal.load(Ordering::Acquire) {
                     if channel.get_pending_count() == 0 {
@@ -413,7 +413,6 @@ impl ThreadWorker {
                 if let Ok(job) = recv {
                     jobs_received.fetch_add(1, Ordering::Release);
                     Self::set_worker_busy(&is_busy, &busy_threads);
-
                     job();
                     Self::unset_worker_busy(&is_busy, &busy_threads);
                     jobs_completed.fetch_add(1, Ordering::Release);
