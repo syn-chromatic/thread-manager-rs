@@ -69,16 +69,16 @@ impl ThreadManager {
 
     pub fn has_finished(&self) -> bool {
         let active_threads: usize = self.get_active_threads();
-        let job_queue: usize = self.get_job_queue();
-
-        if active_threads == 0 && job_queue == 0 {
+        let jobs_queue: usize = self.get_job_queue();
+        if jobs_queue > 0 {
+            return false;
+        } else if jobs_queue == 0 && active_threads == 0 {
             return true;
         }
 
         let waiting_threads: usize = self.get_waiting_threads();
         let busy_threads: usize = self.get_busy_threads();
-
-        if job_queue == 0
+        if jobs_queue == 0
             && busy_threads == 0
             && active_threads > 0
             && waiting_threads > 0
@@ -271,7 +271,9 @@ impl ThreadWorker {
             if let Ok(mut thread_guard) = self.thread.lock() {
                 if let Some(existing_thread) = thread_guard.take() {
                     let _ = existing_thread.join();
-                    if self.channel.get_pending_count() == 0 {
+                    let pending_count = self.channel.get_pending_count();
+                    let waiting_threads = self.waiting_threads.load(Ordering::Acquire);
+                    if waiting_threads > pending_count {
                         return;
                     }
                 }
@@ -402,7 +404,9 @@ impl ThreadWorker {
         let worker_loop = move || {
             while !termination_signal.load(Ordering::Acquire) {
                 if join_signal.load(Ordering::Acquire) {
-                    if channel.get_pending_count() == 0 {
+                    let pending_jobs: usize = channel.get_pending_count();
+                    let jobs_received: usize = jobs_received.load(Ordering::Acquire);
+                    if pending_jobs == 0 && jobs_received > 0 {
                         break;
                     }
                 }
