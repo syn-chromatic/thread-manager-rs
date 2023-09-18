@@ -15,7 +15,7 @@ fn benchmark_test() {
 }
 
 fn write_thread_metrics(thread_manager: &ThreadManager) {
-    let busy_threads: usize = thread_manager.get_active_threads();
+    let busy_threads: usize = thread_manager.get_busy_threads();
     let job_queue: usize = thread_manager.get_job_queue();
 
     print!(

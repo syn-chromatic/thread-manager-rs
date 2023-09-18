@@ -22,6 +22,7 @@ impl ThreadManager {
         let active_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let waiting_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let busy_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+
         let workers: Vec<ThreadWorker> = Self::create_workers(
             thread_size,
             channel.clone(),
@@ -68,27 +69,13 @@ impl ThreadManager {
     }
 
     pub fn has_finished(&self) -> bool {
-        let active_threads: usize = self.get_active_threads();
-        let jobs_queue: usize = self.get_job_queue();
-        if jobs_queue > 0 {
-            return false;
-        } else if jobs_queue == 0 && active_threads == 0 {
-            return true;
-        }
+        let sent_jobs: usize = self.get_sent_jobs();
+        let completed_jobs: usize = self.get_completed_jobs();
 
-        let waiting_threads: usize = self.get_waiting_threads();
-        let busy_threads: usize = self.get_busy_threads();
-        if jobs_queue == 0
-            && busy_threads == 0
-            && active_threads > 0
-            && waiting_threads > 0
-            && active_threads == waiting_threads
-        {
-            for worker in self.workers.iter().take(waiting_threads) {
-                worker.send_channel_release();
-            }
+        if completed_jobs != sent_jobs {
+            return false;
         }
-        false
+        true
     }
 
     pub fn send_join_signals(&self) {
@@ -98,24 +85,24 @@ impl ThreadManager {
     }
 
     pub fn get_active_threads(&self) -> usize {
-        let active_workers = self.active_threads.load(Ordering::Acquire);
+        let active_workers: usize = self.active_threads.load(Ordering::Acquire);
         active_workers
     }
 
     pub fn get_busy_threads(&self) -> usize {
-        let busy_workers = self.busy_threads.load(Ordering::Acquire);
+        let busy_workers: usize = self.busy_threads.load(Ordering::Acquire);
         busy_workers
     }
 
     pub fn get_waiting_threads(&self) -> usize {
-        let waiting_workers = self.waiting_threads.load(Ordering::Acquire);
+        let waiting_workers: usize = self.waiting_threads.load(Ordering::Acquire);
         waiting_workers
     }
 
     pub fn get_jobs_distribution(&self) -> Vec<usize> {
         let mut received_jobs: Vec<usize> = Vec::new();
         for worker in self.workers.iter() {
-            received_jobs.push(worker.get_jobs_received());
+            received_jobs.push(worker.get_received_jobs());
         }
         received_jobs
     }
@@ -125,17 +112,19 @@ impl ThreadManager {
         job_queue
     }
 
-    pub fn get_jobs_received(&self) -> usize {
-        let jobs_received: usize = self.channel.get_received_count();
-        jobs_received
+    pub fn get_received_jobs(&self) -> usize {
+        let received_jobs: usize = self.channel.get_received_count();
+        received_jobs
     }
 
-    pub fn get_jobs_completed(&self) -> usize {
-        let mut jobs_completed = 0;
-        for worker in self.workers.iter() {
-            jobs_completed += worker.get_jobs_completed();
-        }
-        jobs_completed
+    pub fn get_sent_jobs(&self) -> usize {
+        let sent_jobs: usize = self.channel.get_sent_count();
+        sent_jobs
+    }
+
+    pub fn get_completed_jobs(&self) -> usize {
+        let overall_completed_jobs: usize = self.channel.get_concluded_count();
+        overall_completed_jobs
     }
 
     pub fn set_thread_size(&mut self, thread_size: usize) {
@@ -222,8 +211,7 @@ struct ThreadWorker {
     active_threads: Arc<AtomicUsize>,
     waiting_threads: Arc<AtomicUsize>,
     busy_threads: Arc<AtomicUsize>,
-    jobs_received: Arc<AtomicUsize>,
-    jobs_completed: Arc<AtomicUsize>,
+    received_jobs: Arc<AtomicUsize>,
     join_signal: Arc<AtomicBool>,
     termination_signal: Arc<AtomicBool>,
 }
@@ -240,8 +228,7 @@ impl ThreadWorker {
         let is_active: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let is_waiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let is_busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let jobs_received: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let jobs_completed: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let received_jobs: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let join_signal: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let termination_signal: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
@@ -255,8 +242,7 @@ impl ThreadWorker {
             active_threads,
             waiting_threads,
             busy_threads,
-            jobs_received,
-            jobs_completed,
+            received_jobs,
             join_signal,
             termination_signal,
         }
@@ -277,6 +263,7 @@ impl ThreadWorker {
                         return;
                     }
                 }
+
                 let is_active: Arc<AtomicBool> = self.is_active.clone();
                 let active_threads: Arc<AtomicUsize> = self.active_threads.clone();
                 Self::set_worker_active(&is_active, &active_threads);
@@ -332,14 +319,9 @@ impl ThreadWorker {
         false
     }
 
-    fn get_jobs_received(&self) -> usize {
-        let received_jobs: usize = self.jobs_received.load(Ordering::Acquire);
+    fn get_received_jobs(&self) -> usize {
+        let received_jobs: usize = self.received_jobs.load(Ordering::Acquire);
         received_jobs
-    }
-
-    fn get_jobs_completed(&self) -> usize {
-        let timeouts: usize = self.jobs_completed.load(Ordering::Acquire);
-        timeouts
     }
 
     fn send_join_signal(&self) {
@@ -354,7 +336,7 @@ impl ThreadWorker {
     fn send_channel_release(&self) {
         let closure: Job = Box::new(move || {});
         self.channel
-            .send_uncounted(Box::new(closure))
+            .send_release(Box::new(closure))
             .expect(&format!("Failed to release Worker [{}]", self.id));
     }
 
@@ -396,8 +378,7 @@ impl ThreadWorker {
         let active_threads: Arc<AtomicUsize> = self.active_threads.clone();
         let waiting_threads: Arc<AtomicUsize> = self.waiting_threads.clone();
         let busy_threads: Arc<AtomicUsize> = self.busy_threads.clone();
-        let jobs_received: Arc<AtomicUsize> = self.jobs_received.clone();
-        let jobs_completed: Arc<AtomicUsize> = self.jobs_completed.clone();
+        let received_jobs: Arc<AtomicUsize> = self.received_jobs.clone();
         let join_signal: Arc<AtomicBool> = self.join_signal.clone();
         let termination_signal: Arc<AtomicBool> = self.termination_signal.clone();
 
@@ -405,8 +386,7 @@ impl ThreadWorker {
             while !termination_signal.load(Ordering::Acquire) {
                 if join_signal.load(Ordering::Acquire) {
                     let pending_jobs: usize = channel.get_pending_count();
-                    let jobs_received: usize = jobs_received.load(Ordering::Acquire);
-                    if pending_jobs == 0 && jobs_received > 0 {
+                    if pending_jobs == 0 {
                         break;
                     }
                 }
@@ -414,12 +394,12 @@ impl ThreadWorker {
                 Self::set_worker_waiting(&is_waiting, &waiting_threads);
                 let recv = channel.recv();
                 Self::unset_worker_waiting(&is_waiting, &waiting_threads);
-                if let Ok(job) = recv {
-                    jobs_received.fetch_add(1, Ordering::Release);
+                if let Ok((job, kind)) = recv {
+                    received_jobs.fetch_add(1, Ordering::Release);
                     Self::set_worker_busy(&is_busy, &busy_threads);
                     job();
                     Self::unset_worker_busy(&is_busy, &busy_threads);
-                    jobs_completed.fetch_add(1, Ordering::Release);
+                    channel.conclude(kind);
                 }
             }
 

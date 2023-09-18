@@ -6,24 +6,45 @@ use std::time::{Duration, Instant};
 const LOAD_ORDER: Ordering = Ordering::Acquire;
 const FETCH_ORDER: Ordering = Ordering::Release;
 
+pub enum MessageKind {
+    Value,
+    Release,
+}
+
+struct ChannelMessage<T> {
+    value: T,
+    kind: MessageKind,
+}
+
+impl<T> ChannelMessage<T> {
+    fn new(value: T, kind: MessageKind) -> Self {
+        ChannelMessage { value, kind }
+    }
+}
+
 pub struct AtomicChannel<T> {
-    sender: mpsc::Sender<(T, bool)>,
-    receiver: Mutex<mpsc::Receiver<(T, bool)>>,
+    sender: mpsc::Sender<ChannelMessage<T>>,
+    receiver: Mutex<mpsc::Receiver<ChannelMessage<T>>>,
     sent_count: Arc<AtomicUsize>,
     sending_count: Arc<AtomicUsize>,
     received_count: Arc<AtomicUsize>,
     receiving_count: Arc<AtomicUsize>,
+    concluded_count: Arc<AtomicUsize>,
 }
 
 impl<T> AtomicChannel<T> {
     pub fn new() -> Self {
-        let (sender, receiver): (mpsc::Sender<(T, bool)>, mpsc::Receiver<(T, bool)>) =
-            mpsc::channel();
-        let receiver: Mutex<mpsc::Receiver<(T, bool)>> = Mutex::new(receiver);
+        let (sender, receiver): (
+            mpsc::Sender<ChannelMessage<T>>,
+            mpsc::Receiver<ChannelMessage<T>>,
+        ) = mpsc::channel();
+
+        let receiver: Mutex<mpsc::Receiver<ChannelMessage<T>>> = Mutex::new(receiver);
         let sent_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let sending_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let received_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let receiving_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let concluded_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
         AtomicChannel {
             sender,
@@ -32,28 +53,33 @@ impl<T> AtomicChannel<T> {
             sending_count,
             received_count,
             receiving_count,
+            concluded_count,
         }
     }
 
     pub fn send(&self, value: T) -> Result<(), mpsc::SendError<T>> {
         self.add_sending_count();
-        let sent_result: Result<(), mpsc::SendError<(T, bool)>> = self.sender.send((value, true));
+        let channel_message: ChannelMessage<T> = ChannelMessage::new(value, MessageKind::Value);
+        let sent_result: Result<(), mpsc::SendError<ChannelMessage<T>>> =
+            self.sender.send(channel_message);
         self.sub_sending_count();
         if let Ok(_) = sent_result {
             self.add_sent_count();
             return Ok(());
         }
-        let error: mpsc::SendError<(T, bool)> = sent_result.unwrap_err();
-        Err(mpsc::SendError::<T>(error.0 .0))
+        let error: mpsc::SendError<ChannelMessage<T>> = sent_result.unwrap_err();
+        Err(mpsc::SendError::<T>(error.0.value))
     }
 
-    pub fn send_uncounted(&self, value: T) -> Result<(), mpsc::SendError<T>> {
-        let sent_result: Result<(), mpsc::SendError<(T, bool)>> = self.sender.send((value, false));
+    pub fn send_release(&self, value: T) -> Result<(), mpsc::SendError<T>> {
+        let channel_message: ChannelMessage<T> = ChannelMessage::new(value, MessageKind::Release);
+        let sent_result: Result<(), mpsc::SendError<ChannelMessage<T>>> =
+            self.sender.send(channel_message);
         if let Ok(_) = sent_result {
             return Ok(());
         }
-        let error: mpsc::SendError<(T, bool)> = sent_result.unwrap_err();
-        Err(mpsc::SendError::<T>(error.0 .0))
+        let error: mpsc::SendError<ChannelMessage<T>> = sent_result.unwrap_err();
+        Err(mpsc::SendError::<T>(error.0.value))
     }
 
     pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), mpsc::SendError<T>> {
@@ -67,53 +93,67 @@ impl<T> AtomicChannel<T> {
         Ok(())
     }
 
-    pub fn recv(&self) -> Result<T, mpsc::RecvError> {
+    pub fn recv(&self) -> Result<(T, MessageKind), mpsc::RecvError> {
         self.add_receiving_count();
         if let Ok(receiver_guard) = self.receiver.lock() {
-            let received_result: Result<(T, bool), mpsc::RecvError> = receiver_guard.recv();
-            if let Ok((received, boolean)) = received_result {
-                if boolean {
-                    self.add_received_count();
+            let received_result: Result<ChannelMessage<T>, mpsc::RecvError> = receiver_guard.recv();
+            if let Ok(channel_message) = received_result {
+                match channel_message.kind {
+                    MessageKind::Value => self.add_received_count(),
+                    MessageKind::Release => {}
                 }
                 self.sub_receiving_count();
-                return Ok(received);
+                return Ok((channel_message.value, channel_message.kind));
             }
         }
         self.sub_receiving_count();
         Err(mpsc::RecvError)
     }
 
-    pub fn try_recv(&self) -> Result<T, mpsc::TryRecvError> {
+    pub fn try_recv(&self) -> Result<(T, MessageKind), mpsc::TryRecvError> {
         self.add_receiving_count();
         if let Ok(receiver_guard) = self.receiver.lock() {
-            let received_result: Result<(T, bool), mpsc::TryRecvError> = receiver_guard.try_recv();
-            if let Ok((received, boolean)) = received_result {
-                if boolean {
-                    self.add_received_count();
+            let received_result: Result<ChannelMessage<T>, mpsc::TryRecvError> =
+                receiver_guard.try_recv();
+            if let Ok(channel_message) = received_result {
+                match channel_message.kind {
+                    MessageKind::Value => self.add_received_count(),
+                    MessageKind::Release => {}
                 }
                 self.sub_receiving_count();
-                return Ok(received);
+                return Ok((channel_message.value, channel_message.kind));
             }
         }
         self.sub_receiving_count();
         Err(mpsc::TryRecvError::Disconnected)
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, mpsc::RecvTimeoutError> {
+    pub fn recv_timeout(
+        &self,
+        timeout: Duration,
+    ) -> Result<(T, MessageKind), mpsc::RecvTimeoutError> {
         self.add_receiving_count();
         if let Ok(receiver_guard) = self.receiver.lock() {
-            let received_result: Result<(T, bool), mpsc::RecvTimeoutError> =
+            let received_result: Result<ChannelMessage<T>, mpsc::RecvTimeoutError> =
                 receiver_guard.recv_timeout(timeout);
-            if let Ok((received, boolean)) = received_result {
-                if boolean {
-                    self.add_received_count();
+            if let Ok(channel_message) = received_result {
+                match channel_message.kind {
+                    MessageKind::Value => self.add_received_count(),
+                    MessageKind::Release => {}
                 }
                 self.sub_receiving_count();
-                return Ok(received);
+                return Ok((channel_message.value, channel_message.kind));
             }
         }
         self.sub_receiving_count();
         Err(mpsc::RecvTimeoutError::Disconnected)
+    }
+
+    pub fn conclude(&self, kind: MessageKind) {
+        match kind {
+            MessageKind::Value => self.add_concluded_count(),
+            MessageKind::Release => {}
+        }
     }
 
     pub fn get_pending_count(&self) -> usize {
@@ -149,6 +189,11 @@ impl<T> AtomicChannel<T> {
         receiving_count
     }
 
+    pub fn get_concluded_count(&self) -> usize {
+        let concluded_count: usize = self.concluded_count.load(LOAD_ORDER);
+        concluded_count
+    }
+
     pub fn clear_receiver(&self) {
         while let Ok(value) = self.try_recv() {
             drop(value);
@@ -179,5 +224,9 @@ impl<T> AtomicChannel<T> {
 
     fn sub_receiving_count(&self) {
         self.receiving_count.fetch_sub(1, FETCH_ORDER);
+    }
+
+    fn add_concluded_count(&self) {
+        self.concluded_count.fetch_add(1, FETCH_ORDER);
     }
 }
