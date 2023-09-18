@@ -2,67 +2,10 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use crate::channel::AtomicChannel;
+use crate::status::ManagerStatus;
 use crate::worker::ThreadWorker;
 
 pub type Job = Box<dyn FnOnce() + Send + 'static>;
-
-pub struct ManagerStatus {
-    active_threads: Arc<AtomicUsize>,
-    waiting_threads: Arc<AtomicUsize>,
-    busy_threads: Arc<AtomicUsize>,
-}
-
-impl ManagerStatus {
-    fn new() -> Self {
-        let active_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let waiting_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let busy_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        ManagerStatus {
-            active_threads,
-            waiting_threads,
-            busy_threads,
-        }
-    }
-
-    pub fn active_threads(&self) -> usize {
-        let active_threads: usize = self.active_threads.load(Ordering::Acquire);
-        active_threads
-    }
-
-    pub fn waiting_threads(&self) -> usize {
-        let waiting_threads: usize = self.waiting_threads.load(Ordering::Acquire);
-        waiting_threads
-    }
-
-    pub fn busy_threads(&self) -> usize {
-        let busy_threads: usize = self.busy_threads.load(Ordering::Acquire);
-        busy_threads
-    }
-
-    pub fn add_active_threads(&self) {
-        self.active_threads.fetch_add(1, Ordering::Release);
-    }
-
-    pub fn sub_active_threads(&self) {
-        self.active_threads.fetch_sub(1, Ordering::Release);
-    }
-
-    pub fn add_waiting_threads(&self) {
-        self.waiting_threads.fetch_add(1, Ordering::Release);
-    }
-
-    pub fn sub_waiting_threads(&self) {
-        self.waiting_threads.fetch_sub(1, Ordering::Release);
-    }
-
-    pub fn add_busy_threads(&self) {
-        self.busy_threads.fetch_add(1, Ordering::Release);
-    }
-
-    pub fn sub_busy_threads(&self) {
-        self.busy_threads.fetch_sub(1, Ordering::Release);
-    }
-}
 
 pub struct ThreadManager {
     thread_size: usize,
@@ -131,15 +74,15 @@ impl ThreadManager {
     }
 
     pub fn get_active_threads(&self) -> usize {
-        self.manager_status.active_threads()
+        self.manager_status.get_active_threads()
     }
 
     pub fn get_busy_threads(&self) -> usize {
-        self.manager_status.busy_threads()
+        self.manager_status.get_busy_threads()
     }
 
     pub fn get_waiting_threads(&self) -> usize {
-        self.manager_status.waiting_threads()
+        self.manager_status.get_waiting_threads()
     }
 
     pub fn get_jobs_distribution(&self) -> Vec<usize> {

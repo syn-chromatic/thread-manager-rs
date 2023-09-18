@@ -1,10 +1,8 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc;
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-const LOAD_ORDER: Ordering = Ordering::Acquire;
-const FETCH_ORDER: Ordering = Ordering::Release;
+use crate::status::ChannelStatus;
 
 pub enum MessageKind {
     Value,
@@ -19,85 +17,6 @@ struct ChannelMessage<T> {
 impl<T> ChannelMessage<T> {
     fn new(value: T, kind: MessageKind) -> Self {
         ChannelMessage { value, kind }
-    }
-}
-
-struct ChannelStatus {
-    sent_count: Arc<AtomicUsize>,
-    sending_count: Arc<AtomicUsize>,
-    received_count: Arc<AtomicUsize>,
-    receiving_count: Arc<AtomicUsize>,
-    concluded_count: Arc<AtomicUsize>,
-}
-
-impl ChannelStatus {
-    fn new() -> Self {
-        let sent_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let sending_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let received_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let receiving_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let concluded_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-
-        ChannelStatus {
-            sent_count,
-            sending_count,
-            received_count,
-            receiving_count,
-            concluded_count,
-        }
-    }
-
-    fn get_sent_count(&self) -> usize {
-        let sent_count: usize = self.sent_count.load(LOAD_ORDER);
-        sent_count
-    }
-
-    fn get_sending_count(&self) -> usize {
-        let sending_count: usize = self.sending_count.load(LOAD_ORDER);
-        sending_count
-    }
-
-    fn get_received_count(&self) -> usize {
-        let received_count: usize = self.received_count.load(LOAD_ORDER);
-        received_count
-    }
-
-    fn get_receiving_count(&self) -> usize {
-        let receiving_count: usize = self.receiving_count.load(LOAD_ORDER);
-        receiving_count
-    }
-
-    fn get_concluded_count(&self) -> usize {
-        let concluded_count: usize = self.concluded_count.load(LOAD_ORDER);
-        concluded_count
-    }
-
-    fn add_sent_count(&self) {
-        self.sent_count.fetch_add(1, FETCH_ORDER);
-    }
-
-    fn add_sending_count(&self) {
-        self.sending_count.fetch_add(1, FETCH_ORDER);
-    }
-
-    fn sub_sending_count(&self) {
-        self.sending_count.fetch_sub(1, FETCH_ORDER);
-    }
-
-    fn add_received_count(&self) {
-        self.received_count.fetch_add(1, FETCH_ORDER);
-    }
-
-    fn add_receiving_count(&self) {
-        self.receiving_count.fetch_add(1, FETCH_ORDER);
-    }
-
-    fn sub_receiving_count(&self) {
-        self.receiving_count.fetch_sub(1, FETCH_ORDER);
-    }
-
-    fn add_concluded_count(&self) {
-        self.concluded_count.fetch_add(1, FETCH_ORDER);
     }
 }
 
