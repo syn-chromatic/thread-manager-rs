@@ -3,7 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::channel::AtomicChannel;
-use crate::manager::Job;
+use crate::manager::{Job, ManagerStatus};
 
 struct WorkerStatus {
     is_active: Arc<AtomicBool>,
@@ -102,10 +102,8 @@ pub struct ThreadWorker {
     id: usize,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
     channel: Arc<AtomicChannel<Job>>,
-    active_threads: Arc<AtomicUsize>,
-    waiting_threads: Arc<AtomicUsize>,
-    busy_threads: Arc<AtomicUsize>,
-    status: Arc<WorkerStatus>,
+    manager_status: Arc<ManagerStatus>,
+    worker_status: Arc<WorkerStatus>,
     signals: Arc<WorkerSignals>,
 }
 
@@ -113,22 +111,18 @@ impl ThreadWorker {
     pub fn new(
         id: usize,
         channel: Arc<AtomicChannel<Job>>,
-        active_threads: Arc<AtomicUsize>,
-        waiting_threads: Arc<AtomicUsize>,
-        busy_threads: Arc<AtomicUsize>,
+        manager_status: Arc<ManagerStatus>,
     ) -> Self {
         let thread: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
-        let status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
+        let worker_status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
         let signals: Arc<WorkerSignals> = Arc::new(WorkerSignals::new());
 
         ThreadWorker {
             id,
             thread,
             channel,
-            active_threads,
-            waiting_threads,
-            busy_threads,
-            status,
+            manager_status,
+            worker_status,
             signals,
         }
     }
@@ -143,14 +137,14 @@ impl ThreadWorker {
                 if let Some(existing_thread) = thread_guard.take() {
                     let _ = existing_thread.join();
                     let pending_count: usize = self.channel.get_pending_count();
-                    let waiting_threads: usize = self.waiting_threads.load(Ordering::Acquire);
+                    let waiting_threads: usize = self.manager_status.waiting_threads();
                     if waiting_threads > pending_count {
                         return;
                     }
                 }
 
-                let active_threads: Arc<AtomicUsize> = self.active_threads.clone();
-                Self::set_worker_active(&active_threads, &self.status);
+                let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
+                Self::set_worker_active(&manager_status, &self.worker_status);
 
                 let worker_loop = self.create_worker_loop();
                 let thread: thread::JoinHandle<()> = thread::spawn(worker_loop);
@@ -189,19 +183,19 @@ impl ThreadWorker {
     }
 
     pub fn is_active(&self) -> bool {
-        self.status.is_active()
+        self.worker_status.is_active()
     }
 
     pub fn is_busy(&self) -> bool {
-        self.status.is_busy()
+        self.worker_status.is_busy()
     }
 
     pub fn is_waiting(&self) -> bool {
-        self.status.is_waiting()
+        self.worker_status.is_waiting()
     }
 
     pub fn get_received_jobs(&self) -> usize {
-        self.status.received_jobs()
+        self.worker_status.received_jobs()
     }
 
     pub fn send_join_signal(&self) {
@@ -222,42 +216,40 @@ impl ThreadWorker {
 }
 
 impl ThreadWorker {
-    fn set_worker_active(active_threads: &Arc<AtomicUsize>, status: &Arc<WorkerStatus>) {
+    fn set_worker_active(manager_status: &Arc<ManagerStatus>, status: &Arc<WorkerStatus>) {
         status.set_active_state(true);
-        active_threads.fetch_add(1, Ordering::Release);
+        manager_status.add_active_threads();
     }
 
-    fn unset_worker_active(active_threads: &Arc<AtomicUsize>, status: &Arc<WorkerStatus>) {
+    fn unset_worker_active(manager_status: &Arc<ManagerStatus>, status: &Arc<WorkerStatus>) {
         status.set_active_state(false);
-        active_threads.fetch_sub(1, Ordering::Release);
+        manager_status.sub_active_threads();
     }
 
-    fn set_worker_waiting(waiting_threads: &Arc<AtomicUsize>, status: &Arc<WorkerStatus>) {
+    fn set_worker_waiting(manager_status: &Arc<ManagerStatus>, status: &Arc<WorkerStatus>) {
         status.set_waiting_state(true);
-        waiting_threads.fetch_add(1, Ordering::Release);
+        manager_status.add_waiting_threads();
     }
 
-    fn unset_worker_waiting(waiting_threads: &Arc<AtomicUsize>, status: &Arc<WorkerStatus>) {
+    fn unset_worker_waiting(manager_status: &Arc<ManagerStatus>, status: &Arc<WorkerStatus>) {
         status.set_waiting_state(false);
-        waiting_threads.fetch_sub(1, Ordering::Release);
+        manager_status.sub_waiting_threads();
     }
 
-    fn set_worker_busy(busy_threads: &Arc<AtomicUsize>, status: &Arc<WorkerStatus>) {
+    fn set_worker_busy(manager_status: &Arc<ManagerStatus>, status: &Arc<WorkerStatus>) {
         status.set_busy_state(true);
-        busy_threads.fetch_add(1, Ordering::Release);
+        manager_status.add_busy_threads();
     }
 
-    fn unset_worker_busy(busy_threads: &Arc<AtomicUsize>, status: &Arc<WorkerStatus>) {
+    fn unset_worker_busy(manager_status: &Arc<ManagerStatus>, status: &Arc<WorkerStatus>) {
         status.set_busy_state(false);
-        busy_threads.fetch_sub(1, Ordering::Release);
+        manager_status.sub_busy_threads();
     }
 
     fn create_worker_loop(&self) -> impl Fn() {
         let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
-        let active_threads: Arc<AtomicUsize> = self.active_threads.clone();
-        let waiting_threads: Arc<AtomicUsize> = self.waiting_threads.clone();
-        let busy_threads: Arc<AtomicUsize> = self.busy_threads.clone();
-        let status: Arc<WorkerStatus> = self.status.clone();
+        let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
+        let worker_status: Arc<WorkerStatus> = self.worker_status.clone();
         let signals: Arc<WorkerSignals> = self.signals.clone();
 
         let worker_loop = move || {
@@ -269,19 +261,19 @@ impl ThreadWorker {
                     }
                 }
 
-                Self::set_worker_waiting(&waiting_threads, &status);
+                Self::set_worker_waiting(&manager_status, &worker_status);
                 let recv = channel.recv();
-                Self::unset_worker_waiting(&waiting_threads, &status);
+                Self::unset_worker_waiting(&manager_status, &worker_status);
                 if let Ok((job, kind)) = recv {
-                    status.add_received_job();
-                    Self::set_worker_busy(&busy_threads, &status);
+                    worker_status.add_received_job();
+                    Self::set_worker_busy(&manager_status, &worker_status);
                     job();
-                    Self::unset_worker_busy(&busy_threads, &status);
+                    Self::unset_worker_busy(&manager_status, &worker_status);
                     channel.conclude(kind);
                 }
             }
 
-            Self::unset_worker_active(&active_threads, &status);
+            Self::unset_worker_active(&manager_status, &worker_status);
             signals.set_termination_signal(false);
         };
         worker_loop

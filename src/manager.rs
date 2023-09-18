@@ -6,12 +6,68 @@ use crate::worker::ThreadWorker;
 
 pub type Job = Box<dyn FnOnce() + Send + 'static>;
 
-pub struct ThreadManager {
-    thread_size: usize,
-    channel: Arc<AtomicChannel<Job>>,
+pub struct ManagerStatus {
     active_threads: Arc<AtomicUsize>,
     waiting_threads: Arc<AtomicUsize>,
     busy_threads: Arc<AtomicUsize>,
+}
+
+impl ManagerStatus {
+    fn new() -> Self {
+        let active_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let waiting_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let busy_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        ManagerStatus {
+            active_threads,
+            waiting_threads,
+            busy_threads,
+        }
+    }
+
+    pub fn active_threads(&self) -> usize {
+        let active_threads: usize = self.active_threads.load(Ordering::Acquire);
+        active_threads
+    }
+
+    pub fn waiting_threads(&self) -> usize {
+        let waiting_threads: usize = self.waiting_threads.load(Ordering::Acquire);
+        waiting_threads
+    }
+
+    pub fn busy_threads(&self) -> usize {
+        let busy_threads: usize = self.busy_threads.load(Ordering::Acquire);
+        busy_threads
+    }
+
+    pub fn add_active_threads(&self) {
+        self.active_threads.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn sub_active_threads(&self) {
+        self.active_threads.fetch_sub(1, Ordering::Release);
+    }
+
+    pub fn add_waiting_threads(&self) {
+        self.waiting_threads.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn sub_waiting_threads(&self) {
+        self.waiting_threads.fetch_sub(1, Ordering::Release);
+    }
+
+    pub fn add_busy_threads(&self) {
+        self.busy_threads.fetch_add(1, Ordering::Release);
+    }
+
+    pub fn sub_busy_threads(&self) {
+        self.busy_threads.fetch_sub(1, Ordering::Release);
+    }
+}
+
+pub struct ThreadManager {
+    thread_size: usize,
+    channel: Arc<AtomicChannel<Job>>,
+    manager_status: Arc<ManagerStatus>,
     workers: Vec<ThreadWorker>,
     dispatch_worker: AtomicUsize,
 }
@@ -19,25 +75,16 @@ pub struct ThreadManager {
 impl ThreadManager {
     pub fn new(thread_size: usize) -> Self {
         let channel: Arc<AtomicChannel<Job>> = Arc::new(AtomicChannel::new());
-        let active_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let waiting_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let busy_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
         let dispatch_worker: AtomicUsize = AtomicUsize::new(0);
 
-        let workers: Vec<ThreadWorker> = Self::create_workers(
-            thread_size,
-            channel.clone(),
-            active_threads.clone(),
-            waiting_threads.clone(),
-            busy_threads.clone(),
-        );
+        let workers: Vec<ThreadWorker> =
+            Self::create_workers(thread_size, channel.clone(), manager_status.clone());
 
         ThreadManager {
             thread_size,
             channel,
-            active_threads,
-            waiting_threads,
-            busy_threads,
+            manager_status,
             workers,
             dispatch_worker,
         }
@@ -84,18 +131,15 @@ impl ThreadManager {
     }
 
     pub fn get_active_threads(&self) -> usize {
-        let active_workers: usize = self.active_threads.load(Ordering::Acquire);
-        active_workers
+        self.manager_status.active_threads()
     }
 
     pub fn get_busy_threads(&self) -> usize {
-        let busy_workers: usize = self.busy_threads.load(Ordering::Acquire);
-        busy_workers
+        self.manager_status.busy_threads()
     }
 
     pub fn get_waiting_threads(&self) -> usize {
-        let waiting_workers: usize = self.waiting_threads.load(Ordering::Acquire);
-        waiting_workers
+        self.manager_status.waiting_threads()
     }
 
     pub fn get_jobs_distribution(&self) -> Vec<usize> {
@@ -130,16 +174,9 @@ impl ThreadManager {
         if thread_size > self.workers.len() {
             let additional_threads: usize = thread_size - self.workers.len();
             let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
-            let active_threads: Arc<AtomicUsize> = self.active_threads.clone();
-            let waiting_threads: Arc<AtomicUsize> = self.waiting_threads.clone();
-            let busy_threads: Arc<AtomicUsize> = self.busy_threads.clone();
-            let workers: Vec<ThreadWorker> = Self::create_workers(
-                additional_threads,
-                channel,
-                active_threads,
-                waiting_threads,
-                busy_threads,
-            );
+            let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
+            let workers: Vec<ThreadWorker> =
+                Self::create_workers(additional_threads, channel, manager_status);
             self.workers.extend(workers);
         } else if thread_size < self.workers.len() {
             let split_workers: Vec<ThreadWorker> = self.workers.split_off(thread_size);
@@ -170,20 +207,13 @@ impl ThreadManager {
     fn create_workers(
         thread_size: usize,
         channel: Arc<AtomicChannel<Job>>,
-        active_threads: Arc<AtomicUsize>,
-        waiting_threads: Arc<AtomicUsize>,
-        busy_threads: Arc<AtomicUsize>,
+        manager_status: Arc<ManagerStatus>,
     ) -> Vec<ThreadWorker> {
         let mut workers: Vec<ThreadWorker> = Vec::with_capacity(thread_size);
 
         for id in 0..thread_size {
-            let worker: ThreadWorker = ThreadWorker::new(
-                id,
-                channel.clone(),
-                active_threads.clone(),
-                waiting_threads.clone(),
-                busy_threads.clone(),
-            );
+            let worker: ThreadWorker =
+                ThreadWorker::new(id, channel.clone(), manager_status.clone());
             worker.start();
             workers.push(worker);
         }
