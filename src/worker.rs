@@ -10,9 +10,9 @@ pub struct ThreadWorker {
     id: usize,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
     channel: Arc<AtomicChannel<Job>>,
+    signals: Arc<WorkerSignals>,
     manager_status: Arc<ManagerStatus>,
     worker_status: Arc<WorkerStatus>,
-    signals: Arc<WorkerSignals>,
 }
 
 impl ThreadWorker {
@@ -22,16 +22,16 @@ impl ThreadWorker {
         manager_status: Arc<ManagerStatus>,
     ) -> Self {
         let thread: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
-        let worker_status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
         let signals: Arc<WorkerSignals> = Arc::new(WorkerSignals::new());
+        let worker_status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
 
         ThreadWorker {
             id,
             thread,
             channel,
+            signals,
             manager_status,
             worker_status,
-            signals,
         }
     }
 
