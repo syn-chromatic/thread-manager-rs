@@ -3,7 +3,7 @@ ThreadManager is a Rust library that provides a simple and efficient way to mana
 
 It is designed to abstract away the complexities of thread management and provides a convenient interface for parallelizing workloads.
 
-
+___
 ### `➢` Features
 * **Dynamic Thread Management:** ThreadManager allows dynamic resizing of the thread pool, enabling efficient resource utilization based on the workload.
 
@@ -13,7 +13,7 @@ It is designed to abstract away the complexities of thread management and provid
 
 * **Graceful Termination:** The library supports graceful termination of threads, ensuring that all pending jobs are completed before shutting down.
 
-
+___
 ### `➢` Usage
 #### `⤷` Basic Usage
 ```rust
