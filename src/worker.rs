@@ -2,9 +2,9 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::channel::AtomicChannel;
-use crate::manager::Job;
 use crate::signals::WorkerSignals;
 use crate::status::{ManagerStatus, WorkerStatus};
+use crate::types::Job;
 
 pub struct ThreadWorker {
     id: usize,
@@ -47,7 +47,7 @@ impl ThreadWorker {
 
     pub fn send<F>(&self, function: F)
     where
-        F: FnOnce() + Send + 'static,
+        F: Fn() + Send + 'static,
     {
         let job: Job = Box::new(function);
         self.channel
