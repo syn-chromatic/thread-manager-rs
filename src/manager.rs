@@ -85,7 +85,7 @@ impl ThreadManager {
         self.manager_status.get_waiting_threads()
     }
 
-    pub fn get_jobs_distribution(&self) -> Vec<usize> {
+    pub fn get_job_distribution(&self) -> Vec<usize> {
         let mut received_jobs: Vec<usize> = Vec::new();
         for worker in self.workers.iter() {
             received_jobs.push(worker.get_received_jobs());
