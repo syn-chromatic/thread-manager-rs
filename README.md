@@ -15,6 +15,7 @@ ___
 
 ___
 ### `➢` Usage
+
 #### `⤷` Basic Usage
 ```rust
 fn main() {
@@ -39,7 +40,6 @@ fn main() {
     thread_manager.join();
 }
 ```
-
 
 #### `⤷` Monitoring Status And Job Information
 ```rust
@@ -73,5 +73,3 @@ fn main() {
     let completed_jobs: usize = thread_manager.get_completed_jobs();
 }
 ```
-
-
