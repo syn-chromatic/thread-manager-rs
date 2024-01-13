@@ -7,7 +7,7 @@ ___
 ### `➢` Features
 * **Dynamic Thread Management:** ThreadManager allows dynamic resizing of the thread pool, enabling efficient resource utilization based on the workload.
 
-* **Task Execution:** Submit tasks for execution, and ThreadManager will distribute them among the available worker threads.
+* **Job Execution:** Submit jobs for execution, and ThreadManager will distribute them among the available worker threads.
 
 * **Thread Status Monitoring:** ThreadManager provides various methods to monitor the status of the thread pool, including active threads, busy threads, waiting threads, job distribution among threads, and more.
 
@@ -22,9 +22,9 @@ fn main() {
     // Create ThreadManager with 4 worker threads
     let mut thread_manager = ThreadManager::new(4);
 
-    // Submit task for execution
+    // Submit job for execution
     thread_manager.execute(|| {
-        // Your task logic here
+        // Your job logic here
     });
 
 
