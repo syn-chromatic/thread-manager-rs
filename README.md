@@ -3,6 +3,7 @@ Thread Manager is a Rust library that provides a simple and efficient way to man
 
 It is designed to abstract away the complexities of thread management and provides a convenient interface for parallelizing workloads with zero dependencies.
 
+
 ___
 ### `➢` Features
 * **Dynamic Thread Management:** ThreadManager allows dynamic resizing of the thread pool, enabling efficient resource utilization based on the workload.
@@ -12,6 +13,7 @@ ___
 * **Thread Status Monitoring:** ThreadManager provides various methods to monitor the status of the thread pool, including active threads, busy threads, waiting threads, job distribution among threads, and more.
 
 * **Graceful Termination:** The library supports graceful termination of threads, ensuring that all pending jobs are completed before shutting down.
+
 
 ___
 ### `➢` Usage
@@ -72,4 +74,17 @@ fn main() {
     // The amount of jobs completed among all threads.
     let completed_jobs: usize = thread_manager.get_completed_jobs();
 }
+```
+
+
+___
+### `➢` To-Do
+- [ ] — Add documentation
+
+
+___
+### `➢` License
+```
+This project is licensed under the MIT License.
+See the LICENSE file for more information.
 ```
