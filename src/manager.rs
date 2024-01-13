@@ -57,6 +57,44 @@ impl ThreadManager {
         }
     }
 
+    pub fn set_thread_size(&mut self, thread_size: usize) {
+        if thread_size > self.workers.len() {
+            let additional_threads: usize = thread_size - self.workers.len();
+            let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
+            let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
+            let workers: Vec<ThreadWorker> =
+                Self::create_workers(additional_threads, channel, manager_status);
+            self.workers.extend(workers);
+        } else if thread_size < self.workers.len() {
+            let split_workers: Vec<ThreadWorker> = self.workers.split_off(thread_size);
+            for worker in split_workers.iter() {
+                worker.send_termination_signal();
+            }
+        }
+    }
+
+    pub fn send_join_signals(&self) {
+        for worker in self.workers.iter() {
+            worker.send_join_signal();
+        }
+    }
+
+    pub fn clear_job_queue(&self) {
+        self.channel.clear_receiver();
+    }
+
+    pub fn terminate_all(&self) {
+        for worker in self.workers.iter() {
+            worker.send_termination_signal();
+        }
+
+        for worker in self.workers.iter() {
+            worker.join();
+        }
+
+        self.clear_job_queue();
+    }
+
     pub fn has_finished(&self) -> bool {
         let sent_jobs: usize = self.get_sent_jobs();
         let completed_jobs: usize = self.get_completed_jobs();
@@ -65,12 +103,6 @@ impl ThreadManager {
             return false;
         }
         true
-    }
-
-    pub fn send_join_signals(&self) {
-        for worker in self.workers.iter() {
-            worker.send_join_signal();
-        }
     }
 
     pub fn get_active_threads(&self) -> usize {
@@ -111,38 +143,6 @@ impl ThreadManager {
     pub fn get_completed_jobs(&self) -> usize {
         let overall_completed_jobs: usize = self.channel.get_concluded_count();
         overall_completed_jobs
-    }
-
-    pub fn set_thread_size(&mut self, thread_size: usize) {
-        if thread_size > self.workers.len() {
-            let additional_threads: usize = thread_size - self.workers.len();
-            let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
-            let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
-            let workers: Vec<ThreadWorker> =
-                Self::create_workers(additional_threads, channel, manager_status);
-            self.workers.extend(workers);
-        } else if thread_size < self.workers.len() {
-            let split_workers: Vec<ThreadWorker> = self.workers.split_off(thread_size);
-            for worker in split_workers.iter() {
-                worker.send_termination_signal();
-            }
-        }
-    }
-
-    pub fn terminate_all(&self) {
-        for worker in self.workers.iter() {
-            worker.send_termination_signal();
-        }
-
-        for worker in self.workers.iter() {
-            worker.join();
-        }
-
-        self.clear_job_queue();
-    }
-
-    pub fn clear_job_queue(&self) {
-        self.channel.clear_receiver();
     }
 }
 
