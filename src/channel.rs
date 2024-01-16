@@ -135,11 +135,8 @@ impl<T> AtomicChannel<T> {
         Err(mpsc::RecvTimeoutError::Disconnected)
     }
 
-    pub fn conclude(&self, kind: MessageKind) {
-        match kind {
-            MessageKind::Value => self.status.add_concluded_count(),
-            MessageKind::Release => {}
-        }
+    pub fn conclude(&self) {
+        self.status.add_concluded_count()
     }
 
     pub fn get_pending_count(&self) -> usize {

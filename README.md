@@ -90,7 +90,7 @@ ___
 
 ___
 ### `➢` Known Issues
-- Worker signaling causes inaccurate report of job distribution
+- ~~Worker signaling causes inaccurate report of job distribution~~
 
 
 ___

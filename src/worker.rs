@@ -2,6 +2,7 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use crate::channel::AtomicChannel;
+use crate::channel::MessageKind;
 use crate::signals::WorkerSignals;
 use crate::status::{ManagerStatus, WorkerStatus};
 use crate::types::Job;
@@ -173,11 +174,16 @@ impl ThreadWorker {
         let recv = channel.recv();
         Self::set_broad_waiting_state(&manager_status, &worker_status, false);
         if let Ok((job, kind)) = recv {
-            worker_status.add_received_job();
-            Self::set_broad_busy_state(&manager_status, &worker_status, true);
-            job();
-            Self::set_broad_busy_state(&manager_status, &worker_status, false);
-            channel.conclude(kind);
+            match kind {
+                MessageKind::Value => {
+                    worker_status.add_received_job();
+                    Self::set_broad_busy_state(&manager_status, &worker_status, true);
+                    job();
+                    Self::set_broad_busy_state(&manager_status, &worker_status, false);
+                    channel.conclude();
+                }
+                MessageKind::Release => {}
+            }
         }
     }
 
