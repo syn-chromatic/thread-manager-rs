@@ -6,36 +6,23 @@ use std::time::Instant;
 
 use crate::status::ChannelStatus;
 
-pub enum MessageKind {
-    Job,
+pub enum MessageKind<T> {
+    Job(T),
     Release,
 }
 
-struct ChannelMessage<T> {
-    value: T,
-    kind: MessageKind,
-}
-
-impl<T> ChannelMessage<T> {
-    fn new(value: T, kind: MessageKind) -> Self {
-        ChannelMessage { value, kind }
-    }
-}
-
 pub struct AtomicChannel<T> {
-    sender: mpsc::Sender<ChannelMessage<T>>,
-    receiver: Mutex<mpsc::Receiver<ChannelMessage<T>>>,
+    sender: mpsc::Sender<MessageKind<T>>,
+    receiver: Mutex<mpsc::Receiver<MessageKind<T>>>,
     status: ChannelStatus,
 }
 
 impl<T> AtomicChannel<T> {
     pub fn new() -> Self {
-        let (sender, receiver): (
-            mpsc::Sender<ChannelMessage<T>>,
-            mpsc::Receiver<ChannelMessage<T>>,
-        ) = mpsc::channel();
+        let (sender, receiver): (mpsc::Sender<MessageKind<T>>, mpsc::Receiver<MessageKind<T>>) =
+            mpsc::channel();
 
-        let receiver: Mutex<mpsc::Receiver<ChannelMessage<T>>> = Mutex::new(receiver);
+        let receiver: Mutex<mpsc::Receiver<MessageKind<T>>> = Mutex::new(receiver);
         let status: ChannelStatus = ChannelStatus::new();
 
         AtomicChannel {
@@ -45,71 +32,67 @@ impl<T> AtomicChannel<T> {
         }
     }
 
-    pub fn send(&self, value: T) -> Result<(), mpsc::SendError<T>> {
+    pub fn status(&self) -> &ChannelStatus {
+        &self.status
+    }
+
+    pub fn send(&self, value: T) -> Result<(), mpsc::SendError<MessageKind<T>>> {
         self.status.add_sending();
-        let channel_message: ChannelMessage<T> = ChannelMessage::new(value, MessageKind::Job);
-        let sent_result: Result<(), mpsc::SendError<ChannelMessage<T>>> =
-            self.sender.send(channel_message);
+        let message: MessageKind<T> = MessageKind::Job(value);
+        let result: Result<(), mpsc::SendError<MessageKind<T>>> = self.sender.send(message);
         self.status.sub_sending();
-        if let Ok(_) = sent_result {
+        if let Ok(_) = result {
             self.status.add_sent();
             return Ok(());
         }
-        let error: mpsc::SendError<ChannelMessage<T>> = sent_result.unwrap_err();
-        Err(mpsc::SendError::<T>(error.0.value))
+        Err(result.unwrap_err())
     }
 
-    pub fn send_release(&self, value: T) -> Result<(), mpsc::SendError<T>> {
-        let channel_message: ChannelMessage<T> = ChannelMessage::new(value, MessageKind::Release);
-        let sent_result: Result<(), mpsc::SendError<ChannelMessage<T>>> =
-            self.sender.send(channel_message);
-        if let Ok(_) = sent_result {
-            return Ok(());
-        }
-        let error: mpsc::SendError<ChannelMessage<T>> = sent_result.unwrap_err();
-        Err(mpsc::SendError::<T>(error.0.value))
-    }
-
-    pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), mpsc::SendError<T>> {
+    pub fn send_timeout(
+        &self,
+        mut value: T,
+        timeout: Duration,
+    ) -> Result<(), mpsc::SendError<MessageKind<T>>> {
         let now: Instant = Instant::now();
         while let Err(error) = self.send(value) {
             if now.elapsed() >= timeout {
                 return Err(error);
             }
-            value = error.0;
+            match error.0 {
+                MessageKind::Job(job) => value = job,
+                MessageKind::Release => return Ok(()),
+            }
         }
         Ok(())
     }
 
-    pub fn recv(&self) -> Result<(T, MessageKind), mpsc::RecvError> {
+    pub fn send_release(&self) -> Result<(), mpsc::SendError<MessageKind<T>>> {
+        let message: MessageKind<T> = MessageKind::Release;
+        let result: Result<(), mpsc::SendError<MessageKind<T>>> = self.sender.send(message);
+        if let Ok(_) = result {
+            return Ok(());
+        }
+        Err(result.unwrap_err())
+    }
+
+    pub fn recv(&self) -> Result<MessageKind<T>, mpsc::RecvError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
-            let received_result: Result<ChannelMessage<T>, mpsc::RecvError> = receiver_guard.recv();
-            if let Ok(channel_message) = received_result {
-                match channel_message.kind {
-                    MessageKind::Job => self.status.add_received(),
-                    MessageKind::Release => {}
-                }
-                self.status.sub_receiving();
-                return Ok((channel_message.value, channel_message.kind));
+            if let Ok(message) = receiver_guard.recv() {
+                self.on_message_receive(&message);
+                return Ok(message);
             }
         }
         self.status.sub_receiving();
         Err(mpsc::RecvError)
     }
 
-    pub fn try_recv(&self) -> Result<(T, MessageKind), mpsc::TryRecvError> {
+    pub fn try_recv(&self) -> Result<MessageKind<T>, mpsc::TryRecvError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
-            let received_result: Result<ChannelMessage<T>, mpsc::TryRecvError> =
-                receiver_guard.try_recv();
-            if let Ok(channel_message) = received_result {
-                match channel_message.kind {
-                    MessageKind::Job => self.status.add_received(),
-                    MessageKind::Release => {}
-                }
-                self.status.sub_receiving();
-                return Ok((channel_message.value, channel_message.kind));
+            if let Ok(message) = receiver_guard.try_recv() {
+                self.on_message_receive(&message);
+                return Ok(message);
             }
         }
         self.status.sub_receiving();
@@ -119,31 +102,31 @@ impl<T> AtomicChannel<T> {
     pub fn recv_timeout(
         &self,
         timeout: Duration,
-    ) -> Result<(T, MessageKind), mpsc::RecvTimeoutError> {
+    ) -> Result<MessageKind<T>, mpsc::RecvTimeoutError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
-            let received_result: Result<ChannelMessage<T>, mpsc::RecvTimeoutError> =
-                receiver_guard.recv_timeout(timeout);
-            if let Ok(channel_message) = received_result {
-                match channel_message.kind {
-                    MessageKind::Job => self.status.add_received(),
-                    MessageKind::Release => {}
-                }
-                self.status.sub_receiving();
-                return Ok((channel_message.value, channel_message.kind));
+            if let Ok(message) = receiver_guard.recv_timeout(timeout) {
+                self.on_message_receive(&message);
+                return Ok(message);
             }
         }
         self.status.sub_receiving();
         Err(mpsc::RecvTimeoutError::Disconnected)
     }
 
-    pub fn status(&self) -> &ChannelStatus {
-        &self.status
-    }
-
     pub fn clear(&self) {
         while let Ok(value) = self.try_recv() {
             drop(value);
         }
+    }
+}
+
+impl<T> AtomicChannel<T> {
+    fn on_message_receive(&self, message: &MessageKind<T>) {
+        match message {
+            MessageKind::Job(_) => self.status.add_received(),
+            MessageKind::Release => {}
+        }
+        self.status.sub_receiving();
     }
 }

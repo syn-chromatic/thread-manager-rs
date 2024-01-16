@@ -93,9 +93,8 @@ impl ThreadWorker {
     }
 
     pub fn send_release_signal(&self) {
-        let closure: Job = Box::new(move || {});
         self.channel
-            .send_release(Box::new(closure))
+            .send_release()
             .expect(&format!("Failed to release Worker [{}]", self.id()));
     }
 }
@@ -134,11 +133,11 @@ impl ThreadWorker {
         worker_status: &Arc<WorkerStatus>,
     ) {
         Self::set_waiting(&manager_status, &worker_status, true);
-        let recv: Result<(Box<dyn Fn() + Send>, MessageKind), RecvError> = channel.recv();
+        let recv: Result<MessageKind<Job>, RecvError> = channel.recv();
         Self::set_waiting(&manager_status, &worker_status, false);
-        if let Ok((job, kind)) = recv {
-            match kind {
-                MessageKind::Job => {
+        if let Ok(message) = recv {
+            match message {
+                MessageKind::Job(job) => {
                     worker_status.add_received();
                     Self::set_busy(&manager_status, &worker_status, true);
                     job();
