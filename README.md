@@ -86,6 +86,7 @@ fn main() {
 ___
 ### `➢` To-Do
 - [ ] — Add documentation
+- [ ] — Implement result iterator for join method
 
 
 ___
