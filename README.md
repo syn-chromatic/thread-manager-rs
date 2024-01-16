@@ -55,30 +55,30 @@ fn main() {
     // ... Create thread manager and execute jobs.
 
     // Threads that are spawned that could be busy or waiting.
-    let active_threads: usize = thread_manager.get_active_threads();
+    let active_threads: usize = thread_manager.active_threads();
 
     // Threads that are busy and currently executing a job.
-    let busy_threads: usize = thread_manager.get_busy_threads();
+    let busy_threads: usize = thread_manager.busy_threads();
 
     // Threads that are waiting to receive a job.
-    let waiting_threads: usize = thread_manager.get_waiting_threads();
+    let waiting_threads: usize = thread_manager.waiting_threads();
 
     // The amount of jobs left in the queue.
-    let job_queue: usize = thread_manager.get_job_queue();
+    let job_queue: usize = thread_manager.job_queue();
 
     // The job distribution that are executed among threads
     // Example distribution of 4 threads:
     // [3, 3, 3, 4] => each value is the amount of jobs executed for each thread.
-    let job_distribution: Vec<usize> = thread_manager.get_job_distribution();
+    let job_distribution: Vec<usize> = thread_manager.job_distribution();
 
     // The amount of jobs received among all threads.
-    let received_jobs: usize = thread_manager.get_received_jobs();
+    let received_jobs: usize = thread_manager.received_jobs();
 
     // The amount of jobs sent to all threads.
-    let sent_jobs: usize = thread_manager.get_sent_jobs();
+    let sent_jobs: usize = thread_manager.sent_jobs();
 
     // The amount of jobs completed among all threads.
-    let completed_jobs: usize = thread_manager.get_completed_jobs();
+    let completed_jobs: usize = thread_manager.completed_jobs();
 }
 ```
 

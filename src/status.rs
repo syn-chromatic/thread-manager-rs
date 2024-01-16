@@ -1,5 +1,8 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use std::sync::atomic::AtomicBool;
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 const LOAD_ORDER: Ordering = Ordering::Acquire;
 const STORE_ORDER: Ordering = Ordering::Release;
@@ -23,180 +26,209 @@ impl ManagerStatus {
         }
     }
 
-    pub fn get_active_threads(&self) -> usize {
+    pub fn active_threads(&self) -> usize {
         let active_threads: usize = self.active_threads.load(LOAD_ORDER);
         active_threads
     }
 
-    pub fn get_waiting_threads(&self) -> usize {
+    pub fn waiting_threads(&self) -> usize {
         let waiting_threads: usize = self.waiting_threads.load(LOAD_ORDER);
         waiting_threads
     }
 
-    pub fn get_busy_threads(&self) -> usize {
+    pub fn busy_threads(&self) -> usize {
         let busy_threads: usize = self.busy_threads.load(LOAD_ORDER);
         busy_threads
     }
 
-    pub fn add_active_threads(&self) {
-        self.active_threads.fetch_add(1, FETCH_ORDER);
+    pub fn set_active(&self, state: bool) {
+        match state {
+            true => self.active_threads.fetch_add(1, FETCH_ORDER),
+            false => self.active_threads.fetch_sub(1, FETCH_ORDER),
+        };
     }
 
-    pub fn sub_active_threads(&self) {
-        self.active_threads.fetch_sub(1, FETCH_ORDER);
+    pub fn set_waiting(&self, state: bool) {
+        match state {
+            true => self.waiting_threads.fetch_add(1, FETCH_ORDER),
+            false => self.waiting_threads.fetch_sub(1, FETCH_ORDER),
+        };
     }
 
-    pub fn add_waiting_threads(&self) {
-        self.waiting_threads.fetch_add(1, FETCH_ORDER);
-    }
-
-    pub fn sub_waiting_threads(&self) {
-        self.waiting_threads.fetch_sub(1, FETCH_ORDER);
-    }
-
-    pub fn add_busy_threads(&self) {
-        self.busy_threads.fetch_add(1, FETCH_ORDER);
-    }
-
-    pub fn sub_busy_threads(&self) {
-        self.busy_threads.fetch_sub(1, FETCH_ORDER);
+    pub fn set_busy(&self, state: bool) {
+        match state {
+            true => self.busy_threads.fetch_add(1, FETCH_ORDER),
+            false => self.busy_threads.fetch_sub(1, FETCH_ORDER),
+        };
     }
 }
 
 pub struct WorkerStatus {
-    is_active: Arc<AtomicBool>,
-    is_waiting: Arc<AtomicBool>,
-    is_busy: Arc<AtomicBool>,
-    received_jobs: Arc<AtomicUsize>,
+    active: Arc<AtomicBool>,
+    waiting: Arc<AtomicBool>,
+    busy: Arc<AtomicBool>,
+    received: Arc<AtomicUsize>,
 }
 
 impl WorkerStatus {
     pub fn new() -> Self {
-        let is_active: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let is_waiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let is_busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let received_jobs: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let active: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let waiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let received: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
         WorkerStatus {
-            is_active,
-            is_waiting,
-            is_busy,
-            received_jobs,
+            active,
+            waiting,
+            busy,
+            received,
         }
     }
 
-    pub fn get_is_active(&self) -> bool {
-        let is_active: bool = self.is_active.load(LOAD_ORDER);
-        is_active
+    pub fn is_active(&self) -> bool {
+        self.active.load(LOAD_ORDER)
     }
 
-    pub fn get_is_waiting(&self) -> bool {
-        let is_waiting: bool = self.is_waiting.load(LOAD_ORDER);
-        is_waiting
+    pub fn is_waiting(&self) -> bool {
+        self.waiting.load(LOAD_ORDER)
     }
 
-    pub fn get_is_busy(&self) -> bool {
-        let is_busy: bool = self.is_busy.load(LOAD_ORDER);
-        is_busy
+    pub fn is_busy(&self) -> bool {
+        self.busy.load(LOAD_ORDER)
     }
 
-    pub fn get_received_jobs(&self) -> usize {
-        let received_jobs: usize = self.received_jobs.load(LOAD_ORDER);
-        received_jobs
+    pub fn received(&self) -> usize {
+        self.received.load(LOAD_ORDER)
     }
 
-    pub fn set_active_state(&self, state: bool) {
-        self.is_active.store(state, STORE_ORDER);
+    pub fn add_received(&self) {
+        self.received.fetch_add(1, FETCH_ORDER);
     }
 
-    pub fn set_waiting_state(&self, state: bool) {
-        self.is_waiting.store(state, STORE_ORDER);
+    pub fn set_active(&self, state: bool) {
+        self.active.store(state, STORE_ORDER);
     }
 
-    pub fn set_busy_state(&self, state: bool) {
-        self.is_busy.store(state, STORE_ORDER);
+    pub fn set_waiting(&self, state: bool) {
+        self.waiting.store(state, STORE_ORDER);
     }
 
-    pub fn add_received_job(&self) {
-        self.received_jobs.fetch_add(1, FETCH_ORDER);
+    pub fn set_busy(&self, state: bool) {
+        self.busy.store(state, STORE_ORDER);
+    }
+}
+
+pub struct WorkerSignals {
+    join: Arc<AtomicBool>,
+    termination: Arc<AtomicBool>,
+}
+
+impl WorkerSignals {
+    pub fn new() -> Self {
+        let join: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let termination: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        WorkerSignals { join, termination }
+    }
+
+    pub fn join_signal(&self) -> bool {
+        self.join.load(LOAD_ORDER)
+    }
+
+    pub fn termination_signal(&self) -> bool {
+        self.termination.load(LOAD_ORDER)
+    }
+
+    pub fn set_join_signal(&self, state: bool) {
+        self.join.store(state, STORE_ORDER);
+    }
+
+    pub fn set_termination_signal(&self, state: bool) {
+        self.termination.store(state, STORE_ORDER);
     }
 }
 
 pub struct ChannelStatus {
-    sent_count: Arc<AtomicUsize>,
-    sending_count: Arc<AtomicUsize>,
-    received_count: Arc<AtomicUsize>,
-    receiving_count: Arc<AtomicUsize>,
-    concluded_count: Arc<AtomicUsize>,
+    sent: Arc<AtomicUsize>,
+    sending: Arc<AtomicUsize>,
+    received: Arc<AtomicUsize>,
+    receiving: Arc<AtomicUsize>,
+    concluded: Arc<AtomicUsize>,
 }
 
 impl ChannelStatus {
     pub fn new() -> Self {
-        let sent_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let sending_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let received_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let receiving_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let concluded_count: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let sent: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let sending: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let received: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let receiving: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let concluded: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
         ChannelStatus {
-            sent_count,
-            sending_count,
-            received_count,
-            receiving_count,
-            concluded_count,
+            sent,
+            sending,
+            received,
+            receiving,
+            concluded,
         }
     }
 
-    pub fn get_sent_count(&self) -> usize {
-        let sent_count: usize = self.sent_count.load(LOAD_ORDER);
-        sent_count
+    pub fn available(&self) -> usize {
+        let sent_count: usize = self.sent();
+        let received_count: usize = self.received();
+        sent_count - received_count
     }
 
-    pub fn get_sending_count(&self) -> usize {
-        let sending_count: usize = self.sending_count.load(LOAD_ORDER);
-        sending_count
+    pub fn pending(&self) -> usize {
+        let sent_count: usize = self.sent();
+        let sending_count: usize = self.sending();
+        let received_count: usize = self.received();
+        (sent_count + sending_count) - received_count
     }
 
-    pub fn get_received_count(&self) -> usize {
-        let received_count: usize = self.received_count.load(LOAD_ORDER);
-        received_count
+    pub fn sent(&self) -> usize {
+        self.sent.load(LOAD_ORDER)
     }
 
-    pub fn get_receiving_count(&self) -> usize {
-        let receiving_count: usize = self.receiving_count.load(LOAD_ORDER);
-        receiving_count
+    pub fn sending(&self) -> usize {
+        self.sending.load(LOAD_ORDER)
     }
 
-    pub fn get_concluded_count(&self) -> usize {
-        let concluded_count: usize = self.concluded_count.load(LOAD_ORDER);
-        concluded_count
+    pub fn received(&self) -> usize {
+        self.received.load(LOAD_ORDER)
     }
 
-    pub fn add_sent_count(&self) {
-        self.sent_count.fetch_add(1, FETCH_ORDER);
+    pub fn receiving(&self) -> usize {
+        self.receiving.load(LOAD_ORDER)
     }
 
-    pub fn add_sending_count(&self) {
-        self.sending_count.fetch_add(1, FETCH_ORDER);
+    pub fn concluded(&self) -> usize {
+        self.concluded.load(LOAD_ORDER)
     }
 
-    pub fn sub_sending_count(&self) {
-        self.sending_count.fetch_sub(1, FETCH_ORDER);
+    pub fn add_sent(&self) {
+        self.sent.fetch_add(1, FETCH_ORDER);
     }
 
-    pub fn add_received_count(&self) {
-        self.received_count.fetch_add(1, FETCH_ORDER);
+    pub fn add_sending(&self) {
+        self.sending.fetch_add(1, FETCH_ORDER);
     }
 
-    pub fn add_receiving_count(&self) {
-        self.receiving_count.fetch_add(1, FETCH_ORDER);
+    pub fn add_received(&self) {
+        self.received.fetch_add(1, FETCH_ORDER);
     }
 
-    pub fn sub_receiving_count(&self) {
-        self.receiving_count.fetch_sub(1, FETCH_ORDER);
+    pub fn add_receiving(&self) {
+        self.receiving.fetch_add(1, FETCH_ORDER);
+    }
+    pub fn add_concluded(&self) {
+        self.concluded.fetch_add(1, FETCH_ORDER);
     }
 
-    pub fn add_concluded_count(&self) {
-        self.concluded_count.fetch_add(1, FETCH_ORDER);
+    pub fn sub_sending(&self) {
+        self.sending.fetch_sub(1, FETCH_ORDER);
+    }
+
+    pub fn sub_receiving(&self) {
+        self.receiving.fetch_sub(1, FETCH_ORDER);
     }
 }

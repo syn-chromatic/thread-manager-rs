@@ -15,8 +15,8 @@ fn benchmark_test() {
 }
 
 fn write_thread_metrics(thread_manager: &ThreadManager) {
-    let busy_threads: usize = thread_manager.get_busy_threads();
-    let job_queue: usize = thread_manager.get_job_queue();
+    let busy_threads: usize = thread_manager.busy_threads();
+    let job_queue: usize = thread_manager.job_queue();
 
     print!(
         "\x1B[2KThreads: {} | Job Queue: {}\r",
@@ -45,7 +45,7 @@ fn pending_thread_metrics(thread_manager: &ThreadManager) {
             write_thread_metrics(thread_manager);
         }
 
-        if thread_manager.get_job_queue() == 0 {
+        if thread_manager.job_queue() == 0 {
             break;
         }
     }
@@ -69,5 +69,5 @@ fn thread_manager_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
 
     write_thread_metrics(&thread_manager);
     write_elapsed_time(&now);
-    println!("Distribution: {:?}", thread_manager.get_job_distribution());
+    println!("Distribution: {:?}", thread_manager.job_distribution());
 }

@@ -1,5 +1,7 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
 
 use crate::channel::AtomicChannel;
 use crate::status::ManagerStatus;
@@ -45,7 +47,7 @@ impl ThreadManager {
         }
 
         for worker in self.workers.iter() {
-            worker.send_channel_release();
+            worker.send_release_signal();
         }
 
         for worker in self.workers.iter() {
@@ -62,7 +64,7 @@ impl ThreadManager {
             worker.join();
         }
 
-        self.channel.clear_receiver();
+        self.channel.clear();
     }
 
     pub fn set_thread_size(&mut self, size: usize) {
@@ -78,8 +80,8 @@ impl ThreadManager {
     }
 
     pub fn has_finished(&self) -> bool {
-        let sent_jobs: usize = self.get_sent_jobs();
-        let completed_jobs: usize = self.get_completed_jobs();
+        let sent_jobs: usize = self.sent_jobs();
+        let completed_jobs: usize = self.completed_jobs();
 
         if completed_jobs != sent_jobs {
             return false;
@@ -87,44 +89,40 @@ impl ThreadManager {
         true
     }
 
-    pub fn get_active_threads(&self) -> usize {
-        self.status.get_active_threads()
+    pub fn active_threads(&self) -> usize {
+        self.status.active_threads()
     }
 
-    pub fn get_busy_threads(&self) -> usize {
-        self.status.get_busy_threads()
+    pub fn busy_threads(&self) -> usize {
+        self.status.busy_threads()
     }
 
-    pub fn get_waiting_threads(&self) -> usize {
-        self.status.get_waiting_threads()
+    pub fn waiting_threads(&self) -> usize {
+        self.status.waiting_threads()
     }
 
-    pub fn get_job_distribution(&self) -> Vec<usize> {
+    pub fn job_queue(&self) -> usize {
+        self.channel.status().pending()
+    }
+
+    pub fn sent_jobs(&self) -> usize {
+        self.channel.status().sent()
+    }
+
+    pub fn received_jobs(&self) -> usize {
+        self.channel.status().received()
+    }
+
+    pub fn completed_jobs(&self) -> usize {
+        self.channel.status().concluded()
+    }
+
+    pub fn job_distribution(&self) -> Vec<usize> {
         let mut received_jobs: Vec<usize> = Vec::new();
         for worker in self.workers.iter() {
-            received_jobs.push(worker.get_received_jobs());
+            received_jobs.push(worker.status().received());
         }
         received_jobs
-    }
-
-    pub fn get_job_queue(&self) -> usize {
-        let job_queue: usize = self.channel.get_pending_count();
-        job_queue
-    }
-
-    pub fn get_received_jobs(&self) -> usize {
-        let received_jobs: usize = self.channel.get_received_count();
-        received_jobs
-    }
-
-    pub fn get_sent_jobs(&self) -> usize {
-        let sent_jobs: usize = self.channel.get_sent_count();
-        sent_jobs
-    }
-
-    pub fn get_completed_jobs(&self) -> usize {
-        let overall_completed_jobs: usize = self.channel.get_concluded_count();
-        overall_completed_jobs
     }
 }
 

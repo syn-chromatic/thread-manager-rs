@@ -1,11 +1,15 @@
+use std::sync::mpsc::RecvError;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use crate::types::Job;
+
 use crate::channel::AtomicChannel;
 use crate::channel::MessageKind;
-use crate::signals::WorkerSignals;
-use crate::status::{ManagerStatus, WorkerStatus};
-use crate::types::Job;
+
+use crate::status::ManagerStatus;
+use crate::status::WorkerSignals;
+use crate::status::WorkerStatus;
 
 pub struct ThreadWorker {
     id: usize,
@@ -40,9 +44,13 @@ impl ThreadWorker {
         self.id
     }
 
+    pub fn status(&self) -> &Arc<WorkerStatus> {
+        &self.worker_status
+    }
+
     pub fn start(&self) {
-        if !self.is_active() {
-            self.handle_spawn_thread();
+        if !self.worker_status.is_active() {
+            self.spawn_thread();
         }
     }
 
@@ -58,37 +66,21 @@ impl ThreadWorker {
     }
 
     pub fn join(&self) {
-        if let Ok(mut thread_option) = self.thread.lock() {
-            if let Some(thread) = thread_option.take() {
+        if let Ok(mut thread_guard) = self.thread.lock() {
+            if let Some(thread) = thread_guard.take() {
                 let _ = thread.join();
             }
         }
     }
 
     pub fn is_finished(&self) -> bool {
-        if let Ok(thread_option) = self.thread.lock() {
-            if let Some(thread) = thread_option.as_ref() {
+        if let Ok(thread_guard) = self.thread.lock() {
+            if let Some(thread) = thread_guard.as_ref() {
                 let is_finished: bool = thread.is_finished();
                 return is_finished;
             }
         }
         false
-    }
-
-    pub fn is_active(&self) -> bool {
-        self.worker_status.get_is_active()
-    }
-
-    pub fn is_busy(&self) -> bool {
-        self.worker_status.get_is_busy()
-    }
-
-    pub fn is_waiting(&self) -> bool {
-        self.worker_status.get_is_waiting()
-    }
-
-    pub fn get_received_jobs(&self) -> usize {
-        self.worker_status.get_received_jobs()
     }
 
     pub fn send_join_signal(&self) {
@@ -97,10 +89,10 @@ impl ThreadWorker {
 
     pub fn send_termination_signal(&self) {
         self.signals.set_termination_signal(true);
-        self.send_channel_release();
+        self.send_release_signal();
     }
 
-    pub fn send_channel_release(&self) {
+    pub fn send_release_signal(&self) {
         let closure: Job = Box::new(move || {});
         self.channel
             .send_release(Box::new(closure))
@@ -109,60 +101,31 @@ impl ThreadWorker {
 }
 
 impl ThreadWorker {
-    fn handle_spawn_thread(&self) {
-        if let Ok(mut thread_guard) = self.thread.lock() {
-            if let Some(existing_thread) = thread_guard.take() {
-                let _ = existing_thread.join();
-                let pending_count: usize = self.channel.get_pending_count();
-                let waiting_threads: usize = self.manager_status.get_waiting_threads();
-                if waiting_threads > pending_count {
-                    return;
-                }
-            }
-
-            let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
-            Self::set_broad_active_state(&manager_status, &self.worker_status, true);
-
-            let worker_loop = self.create_worker_loop();
-            let thread: thread::JoinHandle<()> = thread::spawn(worker_loop);
-            *thread_guard = Some(thread);
-        }
-    }
-
-    fn set_broad_active_state(
+    fn set_active(
         manager_status: &Arc<ManagerStatus>,
-        status: &Arc<WorkerStatus>,
+        worker_status: &Arc<WorkerStatus>,
         state: bool,
     ) {
-        status.set_active_state(state);
-        match state {
-            true => manager_status.add_active_threads(),
-            false => manager_status.sub_active_threads(),
-        }
+        worker_status.set_active(state);
+        manager_status.set_active(state);
     }
 
-    fn set_broad_waiting_state(
+    fn set_waiting(
         manager_status: &Arc<ManagerStatus>,
-        status: &Arc<WorkerStatus>,
+        worker_status: &Arc<WorkerStatus>,
         state: bool,
     ) {
-        status.set_waiting_state(state);
-        match state {
-            true => manager_status.add_waiting_threads(),
-            false => manager_status.sub_waiting_threads(),
-        }
+        worker_status.set_waiting(state);
+        manager_status.set_waiting(state);
     }
 
-    fn set_broad_busy_state(
+    fn set_busy(
         manager_status: &Arc<ManagerStatus>,
-        status: &Arc<WorkerStatus>,
+        worker_status: &Arc<WorkerStatus>,
         state: bool,
     ) {
-        status.set_busy_state(state);
-        match state {
-            true => manager_status.add_busy_threads(),
-            false => manager_status.sub_busy_threads(),
-        }
+        worker_status.set_busy(state);
+        manager_status.set_busy(state);
     }
 
     fn handle_job(
@@ -170,33 +133,32 @@ impl ThreadWorker {
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
     ) {
-        Self::set_broad_waiting_state(&manager_status, &worker_status, true);
-        let recv = channel.recv();
-        Self::set_broad_waiting_state(&manager_status, &worker_status, false);
+        Self::set_waiting(&manager_status, &worker_status, true);
+        let recv: Result<(Box<dyn Fn() + Send>, MessageKind), RecvError> = channel.recv();
+        Self::set_waiting(&manager_status, &worker_status, false);
         if let Ok((job, kind)) = recv {
             match kind {
-                MessageKind::Value => {
-                    worker_status.add_received_job();
-                    Self::set_broad_busy_state(&manager_status, &worker_status, true);
+                MessageKind::Job => {
+                    worker_status.add_received();
+                    Self::set_busy(&manager_status, &worker_status, true);
                     job();
-                    Self::set_broad_busy_state(&manager_status, &worker_status, false);
-                    channel.conclude();
+                    Self::set_busy(&manager_status, &worker_status, false);
+                    channel.status().add_concluded();
                 }
                 MessageKind::Release => {}
             }
         }
     }
 
-    fn initiate_worker_loop(
+    fn start_worker(
         channel: &Arc<AtomicChannel<Job>>,
+        signals: &Arc<WorkerSignals>,
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
-        signals: &Arc<WorkerSignals>,
     ) {
-        while !signals.get_termination_signal() {
-            if signals.get_join_signal() {
-                let pending_jobs: usize = channel.get_pending_count();
-                if pending_jobs == 0 {
+        while !signals.termination_signal() {
+            if signals.join_signal() {
+                if channel.status().pending() == 0 {
                     break;
                 }
             }
@@ -204,17 +166,34 @@ impl ThreadWorker {
         }
     }
 
-    fn create_worker_loop(&self) -> impl Fn() {
+    fn create_worker(&self) -> impl Fn() {
         let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
+        let signals: Arc<WorkerSignals> = self.signals.clone();
         let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
         let worker_status: Arc<WorkerStatus> = self.worker_status.clone();
-        let signals: Arc<WorkerSignals> = self.signals.clone();
 
-        let worker_loop = move || {
-            Self::initiate_worker_loop(&channel, &manager_status, &worker_status, &signals);
-            Self::set_broad_active_state(&manager_status, &worker_status, false);
+        let worker = move || {
+            Self::start_worker(&channel, &signals, &manager_status, &worker_status);
+            Self::set_active(&manager_status, &worker_status, false);
             signals.set_termination_signal(false);
         };
-        worker_loop
+        worker
+    }
+
+    fn spawn_thread(&self) {
+        if let Ok(mut thread_guard) = self.thread.lock() {
+            if let Some(thread) = thread_guard.take() {
+                let _ = thread.join();
+                let waiting: usize = self.manager_status.waiting_threads();
+                let pending: usize = self.channel.status().pending();
+                if waiting > pending {
+                    return;
+                }
+            }
+
+            Self::set_active(&self.manager_status, &self.worker_status, true);
+            let thread: thread::JoinHandle<()> = thread::spawn(self.create_worker());
+            *thread_guard = Some(thread);
+        }
     }
 }
