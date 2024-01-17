@@ -3,13 +3,13 @@ use std::sync::Arc;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-use crate::channel::AtomicChannel;
+use crate::channel::JobChannel;
 use crate::status::ManagerStatus;
 use crate::types::Job;
 use crate::worker::ThreadWorker;
 
 pub struct ThreadManager<T> {
-    channel: Arc<AtomicChannel<Job<T>>>,
+    channel: Arc<JobChannel<Job<T>>>,
     status: Arc<ManagerStatus>,
     workers: Vec<ThreadWorker<T>>,
     dispatcher: Dispatcher,
@@ -17,7 +17,7 @@ pub struct ThreadManager<T> {
 
 impl<T: 'static> ThreadManager<T> {
     pub fn new(size: usize) -> Self {
-        let channel: Arc<AtomicChannel<Job<T>>> = Arc::new(AtomicChannel::new());
+        let channel: Arc<JobChannel<Job<T>>> = Arc::new(JobChannel::new());
         let status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
         let workers: Vec<ThreadWorker<T>> = Vec::with_capacity(size);
         let dispatcher: Dispatcher = Dispatcher::new(size);
@@ -132,7 +132,7 @@ impl<T: 'static> ThreadManager<T> {
 
         for idx in 0..size {
             let id: usize = idx + worker_size;
-            let channel: Arc<AtomicChannel<Job<T>>> = self.channel.clone();
+            let channel: Arc<JobChannel<Job<T>>> = self.channel.clone();
             let manager_status: Arc<ManagerStatus> = self.status.clone();
             let worker: ThreadWorker<T> = ThreadWorker::new(id, channel, manager_status);
 

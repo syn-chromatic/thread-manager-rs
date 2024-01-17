@@ -11,13 +11,13 @@ pub enum MessageKind<T> {
     Release,
 }
 
-pub struct AtomicChannel<T> {
+pub struct JobChannel<T> {
     sender: mpsc::Sender<MessageKind<T>>,
     receiver: Mutex<mpsc::Receiver<MessageKind<T>>>,
     status: ChannelStatus,
 }
 
-impl<T> AtomicChannel<T> {
+impl<T> JobChannel<T> {
     pub fn new() -> Self {
         let (sender, receiver): (mpsc::Sender<MessageKind<T>>, mpsc::Receiver<MessageKind<T>>) =
             mpsc::channel();
@@ -25,7 +25,7 @@ impl<T> AtomicChannel<T> {
         let receiver: Mutex<mpsc::Receiver<MessageKind<T>>> = Mutex::new(receiver);
         let status: ChannelStatus = ChannelStatus::new();
 
-        AtomicChannel {
+        JobChannel {
             sender,
             receiver,
             status,
@@ -121,7 +121,7 @@ impl<T> AtomicChannel<T> {
     }
 }
 
-impl<T> AtomicChannel<T> {
+impl<T> JobChannel<T> {
     fn on_message_receive(&self, message: &MessageKind<T>) {
         match message {
             MessageKind::Job(_) => self.status.add_received(),

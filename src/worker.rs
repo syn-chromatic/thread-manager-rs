@@ -1,10 +1,11 @@
 use std::sync::mpsc::RecvError;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 use std::thread;
 
 use crate::types::Job;
 
-use crate::channel::AtomicChannel;
+use crate::channel::JobChannel;
 use crate::channel::MessageKind;
 
 use crate::status::ManagerStatus;
@@ -14,7 +15,7 @@ use crate::status::WorkerStatus;
 pub struct ThreadWorker<T> {
     id: usize,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
-    channel: Arc<AtomicChannel<Job<T>>>,
+    channel: Arc<JobChannel<Job<T>>>,
     signals: Arc<WorkerSignals>,
     manager_status: Arc<ManagerStatus>,
     worker_status: Arc<WorkerStatus>,
@@ -23,7 +24,7 @@ pub struct ThreadWorker<T> {
 impl<T: 'static> ThreadWorker<T> {
     pub fn new(
         id: usize,
-        channel: Arc<AtomicChannel<Job<T>>>,
+        channel: Arc<JobChannel<Job<T>>>,
         manager_status: Arc<ManagerStatus>,
     ) -> Self {
         let thread: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
@@ -124,7 +125,7 @@ impl<T: 'static> ThreadWorker<T> {
     }
 
     fn handle_job(
-        channel: &Arc<AtomicChannel<Job<T>>>,
+        channel: &Arc<JobChannel<Job<T>>>,
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
     ) {
@@ -146,7 +147,7 @@ impl<T: 'static> ThreadWorker<T> {
     }
 
     fn start_worker(
-        channel: &Arc<AtomicChannel<Job<T>>>,
+        channel: &Arc<JobChannel<Job<T>>>,
         signals: &Arc<WorkerSignals>,
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
@@ -162,7 +163,7 @@ impl<T: 'static> ThreadWorker<T> {
     }
 
     fn create_worker(&self) -> impl Fn() {
-        let channel: Arc<AtomicChannel<Job<T>>> = self.channel.clone();
+        let channel: Arc<JobChannel<Job<T>>> = self.channel.clone();
         let signals: Arc<WorkerSignals> = self.signals.clone();
         let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
         let worker_status: Arc<WorkerStatus> = self.worker_status.clone();
@@ -190,5 +191,17 @@ impl<T: 'static> ThreadWorker<T> {
             let thread: thread::JoinHandle<()> = thread::spawn(self.create_worker());
             *thread_guard = Some(thread);
         }
+    }
+}
+
+pub struct ResultIterator<T> {
+    buffer: T,
+}
+
+impl<T> Iterator for ResultIterator<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        todo!()
     }
 }
