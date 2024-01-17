@@ -1,1 +1,1 @@
-pub type Job = Box<dyn Fn() + Send + 'static>;
+pub type Job<T> = Box<dyn Fn() -> T + Send + 'static>;

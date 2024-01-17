@@ -8,25 +8,25 @@ use crate::status::ManagerStatus;
 use crate::types::Job;
 use crate::worker::ThreadWorker;
 
-pub struct ThreadManager {
-    channel: Arc<AtomicChannel<Job>>,
+pub struct ThreadManager<T> {
+    channel: Arc<AtomicChannel<Job<T>>>,
     status: Arc<ManagerStatus>,
-    workers: Vec<ThreadWorker>,
-    dispatch: RoundRobinDispatch,
+    workers: Vec<ThreadWorker<T>>,
+    dispatcher: Dispatcher,
 }
 
-impl ThreadManager {
+impl<T: 'static> ThreadManager<T> {
     pub fn new(size: usize) -> Self {
-        let channel: Arc<AtomicChannel<Job>> = Arc::new(AtomicChannel::new());
+        let channel: Arc<AtomicChannel<Job<T>>> = Arc::new(AtomicChannel::new());
         let status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
-        let dispatch: RoundRobinDispatch = RoundRobinDispatch::new(size);
-        let workers: Vec<ThreadWorker> = Vec::with_capacity(size);
+        let workers: Vec<ThreadWorker<T>> = Vec::with_capacity(size);
+        let dispatcher: Dispatcher = Dispatcher::new(size);
 
-        let mut manager: ThreadManager = ThreadManager {
+        let mut manager: ThreadManager<T> = ThreadManager {
             channel,
             status,
             workers,
-            dispatch,
+            dispatcher,
         };
         manager.create_workers(size);
         manager
@@ -34,11 +34,11 @@ impl ThreadManager {
 
     pub fn execute<F>(&self, function: F)
     where
-        F: Fn() + Send + 'static,
+        F: Fn() -> T + Send + 'static,
     {
-        let dispatch: usize = self.dispatch.fetch_and_update();
-        let worker: &ThreadWorker = &self.workers[dispatch];
-        worker.send(function);
+        let id: usize = self.dispatcher.fetch_and_update();
+        let worker: &ThreadWorker<T> = &self.workers[id];
+        worker.send(Box::new(function));
     }
 
     pub fn join(&self) {
@@ -72,7 +72,7 @@ impl ThreadManager {
             let additional_size: usize = size - self.workers.len();
             self.create_workers(additional_size);
         } else if size < self.workers.len() {
-            let split_workers: Vec<ThreadWorker> = self.workers.split_off(size);
+            let split_workers: Vec<ThreadWorker<T>> = self.workers.split_off(size);
             for worker in split_workers.iter() {
                 worker.send_termination_signal();
             }
@@ -126,15 +126,15 @@ impl ThreadManager {
     }
 }
 
-impl ThreadManager {
+impl<T: 'static> ThreadManager<T> {
     fn create_workers(&mut self, size: usize) {
         let worker_size: usize = self.workers.len();
 
         for idx in 0..size {
             let id: usize = idx + worker_size;
-            let channel: Arc<AtomicChannel<Box<dyn Fn() + Send>>> = self.channel.clone();
+            let channel: Arc<AtomicChannel<Job<T>>> = self.channel.clone();
             let manager_status: Arc<ManagerStatus> = self.status.clone();
-            let worker: ThreadWorker = ThreadWorker::new(id, channel, manager_status);
+            let worker: ThreadWorker<T> = ThreadWorker::new(id, channel, manager_status);
 
             worker.start();
             self.workers.push(worker);
@@ -142,23 +142,23 @@ impl ThreadManager {
     }
 }
 
-pub struct RoundRobinDispatch {
+pub struct Dispatcher {
+    id: AtomicUsize,
     max: usize,
-    value: AtomicUsize,
 }
 
-impl RoundRobinDispatch {
+impl Dispatcher {
     pub fn new(max: usize) -> Self {
-        let value: AtomicUsize = AtomicUsize::new(0);
-        Self { max, value }
+        let id: AtomicUsize = AtomicUsize::new(0);
+        Self { id, max }
     }
 
     pub fn fetch_and_update(&self) -> usize {
-        let dispatch: usize = self.value.load(Ordering::Acquire);
+        let dispatch: usize = self.id.load(Ordering::Acquire);
         if dispatch >= (self.max - 1) {
-            self.value.store(0, Ordering::Release);
+            self.id.store(0, Ordering::Release);
         } else {
-            self.value.store(dispatch + 1, Ordering::Release);
+            self.id.store(dispatch + 1, Ordering::Release);
         }
         dispatch
     }

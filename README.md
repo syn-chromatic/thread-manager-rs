@@ -28,7 +28,8 @@ ___
 ```rust
 fn main() {
     // Create ThreadManager with 4 worker threads
-    let mut thread_manager = ThreadManager::new(4);
+    // ::<T> specifies return type for jobs
+    let mut thread_manager = ThreadManager::<()>::new(4);
 
     // Submit job for execution
     thread_manager.execute(|| {

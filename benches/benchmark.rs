@@ -14,7 +14,7 @@ fn benchmark_test() {
     thread_manager_benchmark(pi_terms, jobs, threads);
 }
 
-fn write_thread_metrics(thread_manager: &ThreadManager) {
+fn write_thread_metrics(thread_manager: &ThreadManager<()>) {
     let busy_threads: usize = thread_manager.busy_threads();
     let job_queue: usize = thread_manager.job_queue();
 
@@ -24,7 +24,7 @@ fn write_thread_metrics(thread_manager: &ThreadManager) {
     );
 }
 
-fn add_thread_jobs(thread_manager: &ThreadManager, pi_terms: usize, jobs: usize) {
+fn add_thread_jobs(thread_manager: &ThreadManager<()>, pi_terms: usize, jobs: usize) {
     for idx in 0..jobs {
         if idx % 100 == 0 {
             write_thread_metrics(thread_manager);
@@ -37,7 +37,7 @@ fn add_thread_jobs(thread_manager: &ThreadManager, pi_terms: usize, jobs: usize)
     }
 }
 
-fn pending_thread_metrics(thread_manager: &ThreadManager) {
+fn pending_thread_metrics(thread_manager: &ThreadManager<()>) {
     let mut counter: usize = 0;
     loop {
         counter += 1;
@@ -59,7 +59,7 @@ fn write_elapsed_time(now: &Instant) {
 
 fn thread_manager_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
     println!("Benchmarking..\n");
-    let thread_manager: ThreadManager = ThreadManager::new(threads);
+    let thread_manager: ThreadManager<()> = ThreadManager::new(threads);
 
     let now: Instant = Instant::now();
 

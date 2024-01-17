@@ -11,19 +11,19 @@ use crate::status::ManagerStatus;
 use crate::status::WorkerSignals;
 use crate::status::WorkerStatus;
 
-pub struct ThreadWorker {
+pub struct ThreadWorker<T> {
     id: usize,
     thread: Mutex<Option<thread::JoinHandle<()>>>,
-    channel: Arc<AtomicChannel<Job>>,
+    channel: Arc<AtomicChannel<Job<T>>>,
     signals: Arc<WorkerSignals>,
     manager_status: Arc<ManagerStatus>,
     worker_status: Arc<WorkerStatus>,
 }
 
-impl ThreadWorker {
+impl<T: 'static> ThreadWorker<T> {
     pub fn new(
         id: usize,
-        channel: Arc<AtomicChannel<Job>>,
+        channel: Arc<AtomicChannel<Job<T>>>,
         manager_status: Arc<ManagerStatus>,
     ) -> Self {
         let thread: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
@@ -54,11 +54,7 @@ impl ThreadWorker {
         }
     }
 
-    pub fn send<F>(&self, function: F)
-    where
-        F: Fn() + Send + 'static,
-    {
-        let job: Job = Box::new(function);
+    pub fn send(&self, job: Job<T>) {
         self.channel
             .send(job)
             .expect(&format!("Failed to send job to Worker [{}]", self.id()));
@@ -99,7 +95,7 @@ impl ThreadWorker {
     }
 }
 
-impl ThreadWorker {
+impl<T: 'static> ThreadWorker<T> {
     fn set_active(
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
@@ -128,12 +124,12 @@ impl ThreadWorker {
     }
 
     fn handle_job(
-        channel: &Arc<AtomicChannel<Job>>,
+        channel: &Arc<AtomicChannel<Job<T>>>,
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
     ) {
         Self::set_waiting(&manager_status, &worker_status, true);
-        let recv: Result<MessageKind<Job>, RecvError> = channel.recv();
+        let recv: Result<MessageKind<Job<T>>, RecvError> = channel.recv();
         Self::set_waiting(&manager_status, &worker_status, false);
         if let Ok(message) = recv {
             match message {
@@ -150,7 +146,7 @@ impl ThreadWorker {
     }
 
     fn start_worker(
-        channel: &Arc<AtomicChannel<Job>>,
+        channel: &Arc<AtomicChannel<Job<T>>>,
         signals: &Arc<WorkerSignals>,
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
@@ -166,7 +162,7 @@ impl ThreadWorker {
     }
 
     fn create_worker(&self) -> impl Fn() {
-        let channel: Arc<AtomicChannel<Job>> = self.channel.clone();
+        let channel: Arc<AtomicChannel<Job<T>>> = self.channel.clone();
         let signals: Arc<WorkerSignals> = self.signals.clone();
         let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
         let worker_status: Arc<WorkerStatus> = self.worker_status.clone();
