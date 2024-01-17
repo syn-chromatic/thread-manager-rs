@@ -130,3 +130,99 @@ impl<T> JobChannel<T> {
         self.status.sub_receiving();
     }
 }
+
+pub struct ResultChannel<T> {
+    sender: mpsc::Sender<T>,
+    receiver: Mutex<mpsc::Receiver<T>>,
+    status: ChannelStatus,
+}
+
+impl<T> ResultChannel<T> {
+    pub fn new() -> Self {
+        let (sender, receiver): (mpsc::Sender<T>, mpsc::Receiver<T>) = mpsc::channel();
+
+        let receiver: Mutex<mpsc::Receiver<T>> = Mutex::new(receiver);
+        let status: ChannelStatus = ChannelStatus::new();
+
+        ResultChannel {
+            sender,
+            receiver,
+            status,
+        }
+    }
+
+    pub fn status(&self) -> &ChannelStatus {
+        &self.status
+    }
+
+    pub fn send(&self, value: T) -> Result<(), mpsc::SendError<T>> {
+        self.status.add_sending();
+        let result: Result<(), mpsc::SendError<T>> = self.sender.send(value);
+        self.status.sub_sending();
+        if let Ok(_) = result {
+            self.status.add_sent();
+            return Ok(());
+        }
+        Err(result.unwrap_err())
+    }
+
+    pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), mpsc::SendError<T>> {
+        let now: Instant = Instant::now();
+        while let Err(error) = self.send(value) {
+            if now.elapsed() >= timeout {
+                return Err(error);
+            }
+            value = error.0;
+        }
+        Ok(())
+    }
+
+    pub fn recv(&self) -> Result<T, mpsc::RecvError> {
+        self.status.add_receiving();
+        if let Ok(receiver_guard) = self.receiver.lock() {
+            if let Ok(result) = receiver_guard.recv() {
+                self.on_result_receive();
+                return Ok(result);
+            }
+        }
+        self.status.sub_receiving();
+        Err(mpsc::RecvError)
+    }
+
+    pub fn try_recv(&self) -> Result<T, mpsc::TryRecvError> {
+        self.status.add_receiving();
+        if let Ok(receiver_guard) = self.receiver.lock() {
+            if let Ok(result) = receiver_guard.try_recv() {
+                self.on_result_receive();
+                return Ok(result);
+            }
+        }
+        self.status.sub_receiving();
+        Err(mpsc::TryRecvError::Disconnected)
+    }
+
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, mpsc::RecvTimeoutError> {
+        self.status.add_receiving();
+        if let Ok(receiver_guard) = self.receiver.lock() {
+            if let Ok(result) = receiver_guard.recv_timeout(timeout) {
+                self.on_result_receive();
+                return Ok(result);
+            }
+        }
+        self.status.sub_receiving();
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    }
+
+    pub fn clear(&self) {
+        while let Ok(value) = self.try_recv() {
+            drop(value);
+        }
+    }
+}
+
+impl<T> ResultChannel<T> {
+    fn on_result_receive(&self) {
+        self.status.add_received();
+        self.status.sub_receiving();
+    }
+}
