@@ -1,7 +1,7 @@
 mod channel;
 mod manager;
-mod worker;
 mod status;
 mod types;
+mod worker;
 
 pub use manager::ThreadManager;

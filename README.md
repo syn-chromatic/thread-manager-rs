@@ -50,6 +50,27 @@ fn main() {
 }
 ```
 
+
+#### `⤷` Retrieve Results
+```rust
+fn main() {
+    // Create ThreadManager with 4 worker threads
+    // ::<T> specifies return type for jobs
+    let mut thread_manager = ThreadManager::<f32>::new(4);
+
+    // Submit job for execution
+    thread_manager.execute(|| {
+        return 50.0 / 32.0;
+    });
+
+    // Iterates over the results until all jobs are executed
+    for result in thread_manager.by_ref() {
+        println!("{}", result);
+    }
+}
+```
+
+
 #### `⤷` Monitoring Status And Job Information
 ```rust
 fn main() {
@@ -87,7 +108,7 @@ fn main() {
 ___
 ### `➢` To-Do
 - [ ] — Add documentation
-- [ ] — Implement result iterator for join method
+- [x] — Implement result iterator
 
 
 ___
