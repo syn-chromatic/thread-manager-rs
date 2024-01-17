@@ -2,11 +2,10 @@ use std::sync::Arc;
 
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 
-const LOAD_ORDER: Ordering = Ordering::Acquire;
-const STORE_ORDER: Ordering = Ordering::Release;
-const FETCH_ORDER: Ordering = Ordering::Release;
+use crate::order::FETCH_ORDER;
+use crate::order::LOAD_ORDER;
+use crate::order::STORE_ORDER;
 
 pub struct ManagerStatus {
     active_threads: Arc<AtomicUsize>,

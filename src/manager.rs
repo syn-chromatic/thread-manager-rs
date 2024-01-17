@@ -1,37 +1,35 @@
-use std::sync::Arc;
-
-use std::sync::atomic::AtomicUsize;
-use std::sync::atomic::Ordering;
 use std::sync::mpsc::RecvError;
+use std::sync::Arc;
 
 use crate::channel::JobChannel;
 use crate::channel::ResultChannel;
+use crate::dispatch::DispatchID;
 use crate::status::ManagerStatus;
 use crate::types::Job;
 use crate::worker::ThreadWorker;
 
 pub struct ThreadManager<T> {
+    dispatch: DispatchID,
+    workers: Vec<ThreadWorker<T>>,
     job_channel: Arc<JobChannel<Job<T>>>,
     result_channel: Arc<ResultChannel<T>>,
     manager_status: Arc<ManagerStatus>,
-    workers: Vec<ThreadWorker<T>>,
-    dispatcher: Dispatcher,
 }
 
 impl<T: Send + 'static> ThreadManager<T> {
     pub fn new(size: usize) -> Self {
+        let dispatch: DispatchID = DispatchID::new(size);
         let job_channel: Arc<JobChannel<Job<T>>> = Arc::new(JobChannel::new());
         let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
         let workers: Vec<ThreadWorker<T>> = Vec::with_capacity(size);
-        let dispatcher: Dispatcher = Dispatcher::new(size);
 
         let mut manager: ThreadManager<T> = ThreadManager {
+            dispatch,
+            workers,
             job_channel,
             result_channel,
             manager_status,
-            workers,
-            dispatcher,
         };
         manager.create_workers(size);
         manager
@@ -41,11 +39,43 @@ impl<T: Send + 'static> ThreadManager<T> {
     where
         F: Fn() -> T + Send + 'static,
     {
-        let id: usize = self.dispatcher.fetch_and_update();
+        let id: usize = self.dispatch.fetch_and_update();
         let worker: &ThreadWorker<T> = &self.workers[id];
         worker.send(Box::new(function));
     }
 
+    pub fn set_thread_size(&mut self, size: usize) {
+        if size > self.workers.len() {
+            let additional_size: usize = size - self.workers.len();
+            self.create_workers(additional_size);
+        } else if size < self.workers.len() {
+            let split: Vec<ThreadWorker<T>> = self.workers.split_off(size);
+            for worker in split.iter() {
+                worker.send_termination_signal();
+            }
+        }
+    }
+}
+
+impl<T: Send + 'static> ThreadManager<T> {
+    fn create_workers(&mut self, size: usize) {
+        let worker_size: usize = self.workers.len();
+
+        for idx in 0..size {
+            let id: usize = idx + worker_size;
+            let job_channel: Arc<JobChannel<Job<T>>> = self.job_channel.clone();
+            let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
+            let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
+            let worker: ThreadWorker<T> =
+                ThreadWorker::new(id, job_channel, result_channel, manager_status);
+
+            worker.start();
+            self.workers.push(worker);
+        }
+    }
+}
+
+impl<T> ThreadManager<T> {
     pub fn join(&self) {
         for worker in self.workers.iter() {
             worker.send_join_signal();
@@ -72,18 +102,6 @@ impl<T: Send + 'static> ThreadManager<T> {
         self.job_channel.clear();
     }
 
-    pub fn set_thread_size(&mut self, size: usize) {
-        if size > self.workers.len() {
-            let additional_size: usize = size - self.workers.len();
-            self.create_workers(additional_size);
-        } else if size < self.workers.len() {
-            let split_workers: Vec<ThreadWorker<T>> = self.workers.split_off(size);
-            for worker in split_workers.iter() {
-                worker.send_termination_signal();
-            }
-        }
-    }
-
     pub fn job_distribution(&self) -> Vec<usize> {
         let mut received_jobs: Vec<usize> = Vec::new();
         for worker in self.workers.iter() {
@@ -91,9 +109,7 @@ impl<T: Send + 'static> ThreadManager<T> {
         }
         received_jobs
     }
-}
 
-impl<T> ThreadManager<T> {
     pub fn has_finished(&self) -> bool {
         let sent_jobs: usize = self.sent_jobs();
         let completed_jobs: usize = self.completed_jobs();
@@ -145,24 +161,6 @@ impl<T> ThreadManager<T> {
     }
 }
 
-impl<T: Send + 'static> ThreadManager<T> {
-    fn create_workers(&mut self, size: usize) {
-        let worker_size: usize = self.workers.len();
-
-        for idx in 0..size {
-            let id: usize = idx + worker_size;
-            let job_channel: Arc<JobChannel<Job<T>>> = self.job_channel.clone();
-            let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
-            let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
-            let worker: ThreadWorker<T> =
-                ThreadWorker::new(id, job_channel, result_channel, manager_status);
-
-            worker.start();
-            self.workers.push(worker);
-        }
-    }
-}
-
 impl<T> Iterator for ThreadManager<T> {
     type Item = T;
 
@@ -178,24 +176,8 @@ impl<T> Iterator for ThreadManager<T> {
     }
 }
 
-pub struct Dispatcher {
-    id: AtomicUsize,
-    max: usize,
-}
-
-impl Dispatcher {
-    pub fn new(max: usize) -> Self {
-        let id: AtomicUsize = AtomicUsize::new(0);
-        Self { id, max }
-    }
-
-    pub fn fetch_and_update(&self) -> usize {
-        let dispatch: usize = self.id.load(Ordering::Acquire);
-        if dispatch >= (self.max - 1) {
-            self.id.store(0, Ordering::Release);
-        } else {
-            self.id.store(dispatch + 1, Ordering::Release);
-        }
-        dispatch
+impl<T> Drop for ThreadManager<T> {
+    fn drop(&mut self) {
+        self.terminate_all();
     }
 }

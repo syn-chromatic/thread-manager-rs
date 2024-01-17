@@ -45,14 +45,6 @@ impl<T: Send + 'static> ThreadWorker<T> {
         }
     }
 
-    pub fn id(&self) -> usize {
-        self.id
-    }
-
-    pub fn status(&self) -> &Arc<WorkerStatus> {
-        &self.worker_status
-    }
-
     pub fn start(&self) {
         if !self.worker_status.is_active() {
             self.spawn_thread();
@@ -64,6 +56,16 @@ impl<T: Send + 'static> ThreadWorker<T> {
             .send(job)
             .expect(&format!("Failed to send job to Worker [{}]", self.id()));
         self.start();
+    }
+}
+
+impl<T> ThreadWorker<T> {
+    pub fn id(&self) -> usize {
+        self.id
+    }
+
+    pub fn status(&self) -> &Arc<WorkerStatus> {
+        &self.worker_status
     }
 
     pub fn join(&self) {
