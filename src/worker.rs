@@ -92,7 +92,6 @@ impl<T> ThreadWorker<T> {
 
     pub fn send_termination_signal(&self) {
         self.signals.set_termination_signal(true);
-        self.send_release_signal();
     }
 
     pub fn send_release_signal(&self) {

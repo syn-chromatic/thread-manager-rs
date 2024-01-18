@@ -49,10 +49,15 @@ impl<T: Send + 'static> ThreadManager<T> {
             let additional_size: usize = size - self.workers.len();
             self.create_workers(additional_size);
         } else if size < self.workers.len() {
-            let split: Vec<ThreadWorker<T>> = self.workers.split_off(size);
-            for worker in split.iter() {
-                worker.send_termination_signal();
+            for idx in size..self.workers.len() {
+                (&self.workers[idx]).send_termination_signal();
             }
+
+            for worker in self.workers.iter() {
+                worker.send_release_signal();
+            }
+
+            let _ = self.workers.split_off(size);
         }
     }
 }
@@ -97,6 +102,10 @@ impl<T> ThreadManager<T> {
     pub fn terminate_all(&self) {
         for worker in self.workers.iter() {
             worker.send_termination_signal();
+        }
+
+        for worker in self.workers.iter() {
+            worker.send_release_signal();
         }
 
         for worker in self.workers.iter() {
