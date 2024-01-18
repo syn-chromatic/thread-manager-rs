@@ -64,7 +64,7 @@ fn main() {
     });
 
     // Iterates over the results until all jobs are executed
-    for result in thread_manager.by_ref() {
+    for result in thread_manager.results() {
         println!("{}", result);
     }
 }

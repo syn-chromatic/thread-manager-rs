@@ -90,6 +90,10 @@ impl<T> ThreadManager<T> {
         }
     }
 
+    pub fn results<'a>(&'a self) -> ResultIterator<'a, T> {
+        ResultIterator::new(&self.job_channel, &self.result_channel)
+    }
+
     pub fn terminate_all(&self) {
         for worker in self.workers.iter() {
             worker.send_termination_signal();
@@ -149,8 +153,41 @@ impl<T> ThreadManager<T> {
     }
 }
 
-impl<T> ThreadManager<T> {
-    fn has_results_finished(&self) -> bool {
+impl<T> Drop for ThreadManager<T> {
+    fn drop(&mut self) {
+        self.terminate_all();
+    }
+}
+
+pub struct ResultIterator<'a, T> {
+    job_channel: &'a Arc<JobChannel<Job<T>>>,
+    result_channel: &'a Arc<ResultChannel<T>>,
+}
+
+impl<'a, T> ResultIterator<'a, T> {
+    pub fn new(
+        job_channel: &'a Arc<JobChannel<Job<T>>>,
+        result_channel: &'a Arc<ResultChannel<T>>,
+    ) -> Self {
+        Self {
+            job_channel,
+            result_channel,
+        }
+    }
+}
+
+impl<'a, T> ResultIterator<'a, T> {
+    fn jobs_finished(&self) -> bool {
+        let sent: usize = self.job_channel.status().sent();
+        let concluded: usize = self.job_channel.status().concluded();
+
+        if concluded != sent {
+            return false;
+        }
+        true
+    }
+
+    fn results_finished(&self) -> bool {
         let sent: usize = self.result_channel.status().sent();
         let concluded: usize = self.result_channel.status().concluded();
 
@@ -161,11 +198,11 @@ impl<T> ThreadManager<T> {
     }
 }
 
-impl<T> Iterator for ThreadManager<T> {
+impl<'a, T> Iterator for ResultIterator<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.has_finished() || !self.has_results_finished() {
+        if !self.jobs_finished() || !self.results_finished() {
             let result: Result<T, RecvError> = self.result_channel.recv();
             self.result_channel.status().add_concluded();
             if let Ok(result) = result {
@@ -173,11 +210,5 @@ impl<T> Iterator for ThreadManager<T> {
             }
         }
         None
-    }
-}
-
-impl<T> Drop for ThreadManager<T> {
-    fn drop(&mut self) {
-        self.terminate_all();
     }
 }
