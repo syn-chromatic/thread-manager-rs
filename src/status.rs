@@ -118,27 +118,17 @@ impl WorkerStatus {
 }
 
 pub struct WorkerSignals {
-    join: Arc<AtomicBool>,
     termination: Arc<AtomicBool>,
 }
 
 impl WorkerSignals {
     pub fn new() -> Self {
-        let join: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let termination: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        WorkerSignals { join, termination }
-    }
-
-    pub fn join_signal(&self) -> bool {
-        self.join.load(LOAD_ORDER)
+        WorkerSignals { termination }
     }
 
     pub fn termination_signal(&self) -> bool {
         self.termination.load(LOAD_ORDER)
-    }
-
-    pub fn set_join_signal(&self, state: bool) {
-        self.join.store(state, STORE_ORDER);
     }
 
     pub fn set_termination_signal(&self, state: bool) {

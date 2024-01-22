@@ -1,9 +1,7 @@
+use std::cell::Cell;
 use std::sync::mpsc::RecvError;
 use std::sync::Arc;
-use std::sync::Mutex;
 use std::thread;
-
-use crate::types::Job;
 
 use crate::channel::JobChannel;
 use crate::channel::MessageKind;
@@ -13,24 +11,31 @@ use crate::status::ManagerStatus;
 use crate::status::WorkerSignals;
 use crate::status::WorkerStatus;
 
-pub struct ThreadWorker<T> {
+pub struct ThreadWorker<F, T>
+where
+    F: Fn() -> T + Send + 'static,
+{
     id: usize,
-    thread: Mutex<Option<thread::JoinHandle<()>>>,
+    thread: Cell<Option<thread::JoinHandle<()>>>,
     signals: Arc<WorkerSignals>,
-    job_channel: Arc<JobChannel<Job<T>>>,
+    job_channel: Arc<JobChannel<F>>,
     result_channel: Arc<ResultChannel<T>>,
     manager_status: Arc<ManagerStatus>,
     worker_status: Arc<WorkerStatus>,
 }
 
-impl<T: Send + 'static> ThreadWorker<T> {
+impl<F, T> ThreadWorker<F, T>
+where
+    F: Fn() -> T + Send + 'static,
+    T: Send + 'static,
+{
     pub fn new(
         id: usize,
-        job_channel: Arc<JobChannel<Job<T>>>,
+        job_channel: Arc<JobChannel<F>>,
         result_channel: Arc<ResultChannel<T>>,
         manager_status: Arc<ManagerStatus>,
     ) -> Self {
-        let thread: Mutex<Option<thread::JoinHandle<()>>> = Mutex::new(None);
+        let thread: Cell<Option<thread::JoinHandle<()>>> = Cell::new(None);
         let signals: Arc<WorkerSignals> = Arc::new(WorkerSignals::new());
         let worker_status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
 
@@ -47,11 +52,13 @@ impl<T: Send + 'static> ThreadWorker<T> {
 
     pub fn start(&self) {
         if !self.worker_status.is_active() {
-            self.spawn_thread();
+            Self::set_active(&self.manager_status, &self.worker_status, true);
+            let thread: thread::JoinHandle<()> = thread::spawn(self.create_worker());
+            self.thread.set(Some(thread));
         }
     }
 
-    pub fn send(&self, job: Job<T>) {
+    pub fn send(&self, job: F) {
         self.job_channel
             .send(job)
             .expect(&format!("Failed to send job to Worker [{}]", self.id()));
@@ -59,7 +66,10 @@ impl<T: Send + 'static> ThreadWorker<T> {
     }
 }
 
-impl<T> ThreadWorker<T> {
+impl<F, T> ThreadWorker<F, T>
+where
+    F: Fn() -> T + Send + 'static,
+{
     pub fn id(&self) -> usize {
         self.id
     }
@@ -69,25 +79,9 @@ impl<T> ThreadWorker<T> {
     }
 
     pub fn join(&self) {
-        if let Ok(mut thread_guard) = self.thread.lock() {
-            if let Some(thread) = thread_guard.take() {
-                let _ = thread.join();
-            }
+        if let Some(thread) = self.thread.take() {
+            let _ = thread.join();
         }
-    }
-
-    pub fn is_finished(&self) -> bool {
-        if let Ok(thread_guard) = self.thread.lock() {
-            if let Some(thread) = thread_guard.as_ref() {
-                let is_finished: bool = thread.is_finished();
-                return is_finished;
-            }
-        }
-        false
-    }
-
-    pub fn send_join_signal(&self) {
-        self.signals.set_join_signal(true);
     }
 
     pub fn send_termination_signal(&self) {
@@ -101,7 +95,11 @@ impl<T> ThreadWorker<T> {
     }
 }
 
-impl<T: Send + 'static> ThreadWorker<T> {
+impl<F, T> ThreadWorker<F, T>
+where
+    F: Fn() -> T + Send + 'static,
+    T: Send + 'static,
+{
     fn set_active(
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
@@ -129,49 +127,37 @@ impl<T: Send + 'static> ThreadWorker<T> {
         manager_status.set_busy(state);
     }
 
-    fn handle_job(
-        job_channel: &Arc<JobChannel<Job<T>>>,
-        result_channel: &Arc<ResultChannel<T>>,
-        manager_status: &Arc<ManagerStatus>,
-        worker_status: &Arc<WorkerStatus>,
-    ) {
-        Self::set_waiting(&manager_status, &worker_status, true);
-        let recv: Result<MessageKind<Job<T>>, RecvError> = job_channel.recv();
-        Self::set_waiting(&manager_status, &worker_status, false);
-        if let Ok(message) = recv {
-            match message {
-                MessageKind::Job(job) => {
-                    worker_status.add_received();
-                    Self::set_busy(&manager_status, &worker_status, true);
-                    result_channel.send(job()).expect("Failed to send result");
-                    Self::set_busy(&manager_status, &worker_status, false);
-                    job_channel.status().add_concluded();
-                }
-                MessageKind::Release => {}
-            }
-        }
-    }
-
     fn start_worker(
         signals: &Arc<WorkerSignals>,
-        job_channel: &Arc<JobChannel<Job<T>>>,
+        job_channel: &Arc<JobChannel<F>>,
         result_channel: &Arc<ResultChannel<T>>,
         manager_status: &Arc<ManagerStatus>,
         worker_status: &Arc<WorkerStatus>,
     ) {
         while !signals.termination_signal() {
-            if signals.join_signal() {
-                if job_channel.status().pending() == 0 {
-                    break;
+            Self::set_waiting(&manager_status, &worker_status, true);
+            let recv: Result<MessageKind<F>, RecvError> = job_channel.recv();
+            Self::set_waiting(&manager_status, &worker_status, false);
+            if let Ok(message) = recv {
+                match message {
+                    MessageKind::Job(job) => {
+                        worker_status.add_received();
+                        Self::set_busy(&manager_status, &worker_status, true);
+                        result_channel.send(job()).expect("Failed to send result");
+                        Self::set_busy(&manager_status, &worker_status, false);
+                        job_channel.status().add_concluded();
+                    }
+                    MessageKind::Release => {
+                        break;
+                    }
                 }
             }
-            Self::handle_job(job_channel, result_channel, manager_status, worker_status);
         }
     }
 
     fn create_worker(&self) -> impl Fn() {
         let signals: Arc<WorkerSignals> = self.signals.clone();
-        let job_channel: Arc<JobChannel<Job<T>>> = self.job_channel.clone();
+        let job_channel: Arc<JobChannel<F>> = self.job_channel.clone();
         let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
         let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
         let worker_status: Arc<WorkerStatus> = self.worker_status.clone();
@@ -188,22 +174,5 @@ impl<T: Send + 'static> ThreadWorker<T> {
             signals.set_termination_signal(false);
         };
         worker
-    }
-
-    fn spawn_thread(&self) {
-        if let Ok(mut thread_guard) = self.thread.lock() {
-            if let Some(thread) = thread_guard.take() {
-                let _ = thread.join();
-                let waiting: usize = self.manager_status.waiting_threads();
-                let pending: usize = self.job_channel.status().pending();
-                if waiting > pending {
-                    return;
-                }
-            }
-
-            Self::set_active(&self.manager_status, &self.worker_status, true);
-            let thread: thread::JoinHandle<()> = thread::spawn(self.create_worker());
-            *thread_guard = Some(thread);
-        }
     }
 }

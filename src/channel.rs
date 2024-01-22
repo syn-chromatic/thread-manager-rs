@@ -1,5 +1,12 @@
-use std::sync::mpsc;
 use std::sync::Mutex;
+
+use std::sync::mpsc::channel;
+use std::sync::mpsc::Receiver;
+use std::sync::mpsc::RecvError;
+use std::sync::mpsc::RecvTimeoutError;
+use std::sync::mpsc::SendError;
+use std::sync::mpsc::Sender;
+use std::sync::mpsc::TryRecvError;
 
 use std::time::Duration;
 use std::time::Instant;
@@ -12,17 +19,16 @@ pub enum MessageKind<T> {
 }
 
 pub struct JobChannel<T> {
-    sender: mpsc::Sender<MessageKind<T>>,
-    receiver: Mutex<mpsc::Receiver<MessageKind<T>>>,
+    sender: Sender<MessageKind<T>>,
+    receiver: Mutex<Receiver<MessageKind<T>>>,
     status: ChannelStatus,
 }
 
 impl<T> JobChannel<T> {
     pub fn new() -> Self {
-        let (sender, receiver): (mpsc::Sender<MessageKind<T>>, mpsc::Receiver<MessageKind<T>>) =
-            mpsc::channel();
+        let (sender, receiver): (Sender<MessageKind<T>>, Receiver<MessageKind<T>>) = channel();
 
-        let receiver: Mutex<mpsc::Receiver<MessageKind<T>>> = Mutex::new(receiver);
+        let receiver: Mutex<Receiver<MessageKind<T>>> = Mutex::new(receiver);
         let status: ChannelStatus = ChannelStatus::new();
 
         JobChannel {
@@ -36,10 +42,10 @@ impl<T> JobChannel<T> {
         &self.status
     }
 
-    pub fn send(&self, value: T) -> Result<(), mpsc::SendError<MessageKind<T>>> {
+    pub fn send(&self, value: T) -> Result<(), SendError<MessageKind<T>>> {
         self.status.add_sending();
         let message: MessageKind<T> = MessageKind::Job(value);
-        let result: Result<(), mpsc::SendError<MessageKind<T>>> = self.sender.send(message);
+        let result: Result<(), SendError<MessageKind<T>>> = self.sender.send(message);
         self.status.sub_sending();
         if let Ok(_) = result {
             self.status.add_sent();
@@ -52,7 +58,7 @@ impl<T> JobChannel<T> {
         &self,
         mut value: T,
         timeout: Duration,
-    ) -> Result<(), mpsc::SendError<MessageKind<T>>> {
+    ) -> Result<(), SendError<MessageKind<T>>> {
         let now: Instant = Instant::now();
         while let Err(error) = self.send(value) {
             if now.elapsed() >= timeout {
@@ -66,16 +72,16 @@ impl<T> JobChannel<T> {
         Ok(())
     }
 
-    pub fn send_release(&self) -> Result<(), mpsc::SendError<MessageKind<T>>> {
+    pub fn send_release(&self) -> Result<(), SendError<MessageKind<T>>> {
         let message: MessageKind<T> = MessageKind::Release;
-        let result: Result<(), mpsc::SendError<MessageKind<T>>> = self.sender.send(message);
-        if let Ok(_) = result {
+        let result: Result<(), SendError<MessageKind<T>>> = self.sender.send(message);
+        if result.is_ok() {
             return Ok(());
         }
         Err(result.unwrap_err())
     }
 
-    pub fn recv(&self) -> Result<MessageKind<T>, mpsc::RecvError> {
+    pub fn recv(&self) -> Result<MessageKind<T>, RecvError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
             if let Ok(message) = receiver_guard.recv() {
@@ -84,10 +90,10 @@ impl<T> JobChannel<T> {
             }
         }
         self.status.sub_receiving();
-        Err(mpsc::RecvError)
+        Err(RecvError)
     }
 
-    pub fn try_recv(&self) -> Result<MessageKind<T>, mpsc::TryRecvError> {
+    pub fn try_recv(&self) -> Result<MessageKind<T>, TryRecvError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
             if let Ok(message) = receiver_guard.try_recv() {
@@ -96,13 +102,10 @@ impl<T> JobChannel<T> {
             }
         }
         self.status.sub_receiving();
-        Err(mpsc::TryRecvError::Disconnected)
+        Err(TryRecvError::Disconnected)
     }
 
-    pub fn recv_timeout(
-        &self,
-        timeout: Duration,
-    ) -> Result<MessageKind<T>, mpsc::RecvTimeoutError> {
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<MessageKind<T>, RecvTimeoutError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
             if let Ok(message) = receiver_guard.recv_timeout(timeout) {
@@ -111,7 +114,7 @@ impl<T> JobChannel<T> {
             }
         }
         self.status.sub_receiving();
-        Err(mpsc::RecvTimeoutError::Disconnected)
+        Err(RecvTimeoutError::Disconnected)
     }
 
     pub fn clear(&self) {
@@ -132,16 +135,16 @@ impl<T> JobChannel<T> {
 }
 
 pub struct ResultChannel<T> {
-    sender: mpsc::Sender<T>,
-    receiver: Mutex<mpsc::Receiver<T>>,
+    sender: Sender<T>,
+    receiver: Mutex<Receiver<T>>,
     status: ChannelStatus,
 }
 
 impl<T> ResultChannel<T> {
     pub fn new() -> Self {
-        let (sender, receiver): (mpsc::Sender<T>, mpsc::Receiver<T>) = mpsc::channel();
+        let (sender, receiver): (Sender<T>, Receiver<T>) = channel();
 
-        let receiver: Mutex<mpsc::Receiver<T>> = Mutex::new(receiver);
+        let receiver: Mutex<Receiver<T>> = Mutex::new(receiver);
         let status: ChannelStatus = ChannelStatus::new();
 
         ResultChannel {
@@ -155,9 +158,9 @@ impl<T> ResultChannel<T> {
         &self.status
     }
 
-    pub fn send(&self, value: T) -> Result<(), mpsc::SendError<T>> {
+    pub fn send(&self, value: T) -> Result<(), SendError<T>> {
         self.status.add_sending();
-        let result: Result<(), mpsc::SendError<T>> = self.sender.send(value);
+        let result: Result<(), SendError<T>> = self.sender.send(value);
         self.status.sub_sending();
         if let Ok(_) = result {
             self.status.add_sent();
@@ -166,7 +169,7 @@ impl<T> ResultChannel<T> {
         Err(result.unwrap_err())
     }
 
-    pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), mpsc::SendError<T>> {
+    pub fn send_timeout(&self, mut value: T, timeout: Duration) -> Result<(), SendError<T>> {
         let now: Instant = Instant::now();
         while let Err(error) = self.send(value) {
             if now.elapsed() >= timeout {
@@ -177,7 +180,7 @@ impl<T> ResultChannel<T> {
         Ok(())
     }
 
-    pub fn recv(&self) -> Result<T, mpsc::RecvError> {
+    pub fn recv(&self) -> Result<T, RecvError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
             if let Ok(result) = receiver_guard.recv() {
@@ -186,10 +189,10 @@ impl<T> ResultChannel<T> {
             }
         }
         self.status.sub_receiving();
-        Err(mpsc::RecvError)
+        Err(RecvError)
     }
 
-    pub fn try_recv(&self) -> Result<T, mpsc::TryRecvError> {
+    pub fn try_recv(&self) -> Result<T, TryRecvError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
             if let Ok(result) = receiver_guard.try_recv() {
@@ -198,10 +201,10 @@ impl<T> ResultChannel<T> {
             }
         }
         self.status.sub_receiving();
-        Err(mpsc::TryRecvError::Disconnected)
+        Err(TryRecvError::Disconnected)
     }
 
-    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, mpsc::RecvTimeoutError> {
+    pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         self.status.add_receiving();
         if let Ok(receiver_guard) = self.receiver.lock() {
             if let Ok(result) = receiver_guard.recv_timeout(timeout) {
@@ -210,7 +213,7 @@ impl<T> ResultChannel<T> {
             }
         }
         self.status.sub_receiving();
-        Err(mpsc::RecvTimeoutError::Disconnected)
+        Err(RecvTimeoutError::Disconnected)
     }
 
     pub fn clear(&self) {
