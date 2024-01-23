@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use crate::channel::JobChannel;
 use crate::channel::ResultChannel;
-use crate::dispatch::DispatchID;
+use crate::dispatch::DispatchCycle;
 use crate::status::ManagerStatus;
 use crate::worker::ThreadWorker;
 
@@ -13,7 +13,7 @@ pub struct ThreadManager<T>
 where
     T: Send + 'static,
 {
-    dispatch: DispatchID,
+    dispatch: DispatchCycle,
     workers: Vec<ThreadWorker<FnType<T>, T>>,
     job_channel: Arc<JobChannel<FnType<T>>>,
     result_channel: Arc<ResultChannel<T>>,
@@ -25,7 +25,7 @@ where
     T: Send + 'static,
 {
     pub fn new(size: usize) -> Self {
-        let dispatch: DispatchID = DispatchID::new(size);
+        let dispatch: DispatchCycle = DispatchCycle::new(size);
         let job_channel: Arc<JobChannel<FnType<T>>> = Arc::new(JobChannel::new());
         let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
@@ -52,19 +52,19 @@ where
     }
 
     pub fn set_thread_size(&mut self, size: usize) {
+        let max_id: usize = self.dispatch.fetch_max();
+
         if size > self.workers.len() {
             let additional_size: usize = size - self.workers.len();
+            self.start_workers(max_id, self.workers.len());
             self.create_workers(additional_size);
-        } else if size < self.workers.len() {
-            for idx in size..self.workers.len() {
-                (&self.workers[idx]).send_termination_signal();
-            }
-
-            for worker in self.workers.iter() {
-                worker.send_release_signal();
-            }
-
-            let _ = self.workers.split_off(size);
+            self.dispatch.set_max(size);
+        } else if size < max_id {
+            self.send_termination_workers(size, max_id);
+            self.dispatch.set_max(size);
+        } else if size > max_id {
+            self.start_workers(max_id, size);
+            self.dispatch.set_max(size);
         }
     }
 }
@@ -84,6 +84,7 @@ where
             let worker: ThreadWorker<FnType<T>, T> =
                 ThreadWorker::new(id, job_channel, result_channel, manager_status);
 
+            worker.start();
             self.workers.push(worker);
         }
     }
@@ -98,33 +99,20 @@ where
     }
 
     pub fn join(&self) {
-        for worker in self.workers.iter() {
-            worker.send_release_signal();
-        }
-
-        for worker in self.workers.iter() {
-            worker.join();
-        }
+        self.send_release_workers(0, self.workers.len());
+        self.join_workers(0, self.workers.len());
+        self.job_channel.clear();
     }
 
     pub fn terminate_all(&self) {
-        for worker in self.workers.iter() {
-            worker.send_termination_signal();
-        }
-
-        for worker in self.workers.iter() {
-            worker.send_release_signal();
-        }
-
-        for worker in self.workers.iter() {
-            worker.join();
-        }
-
+        self.send_termination_workers(0, self.workers.len());
+        self.send_release_workers(0, self.workers.len());
+        self.join_workers(0, self.workers.len());
         self.job_channel.clear();
     }
 
     pub fn job_distribution(&self) -> Vec<usize> {
-        let mut received_jobs: Vec<usize> = Vec::new();
+        let mut received_jobs: Vec<usize> = Vec::with_capacity(self.workers.len());
         for worker in self.workers.iter() {
             received_jobs.push(worker.status().received());
         }
@@ -132,13 +120,7 @@ where
     }
 
     pub fn has_finished(&self) -> bool {
-        let sent_jobs: usize = self.sent_jobs();
-        let completed_jobs: usize = self.completed_jobs();
-
-        if completed_jobs != sent_jobs {
-            return false;
-        }
-        true
+        self.job_channel.is_finished()
     }
 
     pub fn active_threads(&self) -> usize {
@@ -170,6 +152,35 @@ where
     }
 }
 
+impl<T> ThreadManager<T>
+where
+    T: Send + 'static,
+{
+    fn start_workers(&self, st: usize, en: usize) {
+        for worker in self.workers[st..en].iter() {
+            worker.start();
+        }
+    }
+
+    fn join_workers(&self, st: usize, en: usize) {
+        for worker in self.workers[st..en].iter() {
+            worker.join();
+        }
+    }
+
+    fn send_termination_workers(&self, st: usize, en: usize) {
+        for worker in self.workers[st..en].iter() {
+            worker.send_termination_signal();
+        }
+    }
+
+    fn send_release_workers(&self, st: usize, en: usize) {
+        for worker in self.workers[st..en].iter() {
+            worker.send_release_signal();
+        }
+    }
+}
+
 impl<T> Drop for ThreadManager<T>
 where
     T: Send + 'static,
@@ -196,33 +207,11 @@ impl<'a, T> ResultIterator<'a, T> {
     }
 }
 
-impl<'a, T> ResultIterator<'a, T> {
-    fn jobs_finished(&self) -> bool {
-        let sent: usize = self.job_channel.status().sent();
-        let concluded: usize = self.job_channel.status().concluded();
-
-        if concluded != sent {
-            return false;
-        }
-        true
-    }
-
-    fn results_finished(&self) -> bool {
-        let sent: usize = self.result_channel.status().sent();
-        let concluded: usize = self.result_channel.status().concluded();
-
-        if concluded != sent {
-            return false;
-        }
-        true
-    }
-}
-
 impl<'a, T> Iterator for ResultIterator<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if !self.jobs_finished() || !self.results_finished() {
+        if !self.job_channel.is_finished() || !self.result_channel.is_finished() {
             let result: Result<T, RecvError> = self.result_channel.recv();
             self.result_channel.status().add_concluded();
             if let Ok(result) = result {

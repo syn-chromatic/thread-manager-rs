@@ -117,6 +117,15 @@ impl<T> JobChannel<T> {
         Err(RecvTimeoutError::Disconnected)
     }
 
+    pub fn is_finished(&self) -> bool {
+        let status: &ChannelStatus = self.status();
+
+        if status.concluded() != status.sent() {
+            return false;
+        }
+        true
+    }
+
     pub fn clear(&self) {
         while let Ok(value) = self.try_recv() {
             drop(value);
@@ -214,6 +223,15 @@ impl<T> ResultChannel<T> {
         }
         self.status.sub_receiving();
         Err(RecvTimeoutError::Disconnected)
+    }
+
+    pub fn is_finished(&self) -> bool {
+        let status: &ChannelStatus = self.status();
+
+        if status.concluded() != status.sent() {
+            return false;
+        }
+        true
     }
 
     pub fn clear(&self) {
