@@ -204,6 +204,10 @@ impl<'a, T> ResultIterator<'a, T> {
             result_channel,
         }
     }
+
+    pub fn has_results(&self) -> bool {
+        !self.result_channel.is_finished()
+    }
 }
 
 impl<'a, T> Iterator for ResultIterator<'a, T> {

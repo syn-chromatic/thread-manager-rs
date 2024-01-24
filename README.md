@@ -63,9 +63,16 @@ fn main() {
         return 50.0 / 32.0;
     });
 
-    // Iterates over the results until all jobs are executed
+    // The iterator [same as .next()] blocks if there are
+    // no results but there are jobs remaining,
+    // This way the 'for loop' only completes when all jobs are executed.
     for result in thread_manager.results() {
         println!("{}", result);
+    }
+
+    // Check if results are available and retrieve one
+    if thread_manager.results().has_results() {
+        let result: Option<f32> = thread_manager.results().next();
     }
 }
 ```
