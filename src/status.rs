@@ -18,7 +18,7 @@ impl ManagerStatus {
         let active_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let waiting_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let busy_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        ManagerStatus {
+        Self {
             active_threads,
             waiting_threads,
             busy_threads,
@@ -76,7 +76,7 @@ impl WorkerStatus {
         let busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let received: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
-        WorkerStatus {
+        Self {
             active,
             waiting,
             busy,
@@ -124,7 +124,7 @@ pub struct WorkerSignals {
 impl WorkerSignals {
     pub fn new() -> Self {
         let termination: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        WorkerSignals { termination }
+        Self { termination }
     }
 
     pub fn termination_signal(&self) -> bool {
@@ -152,7 +152,7 @@ impl ChannelStatus {
         let receiving: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         let concluded: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
-        ChannelStatus {
+        Self {
             sent,
             sending,
             received,

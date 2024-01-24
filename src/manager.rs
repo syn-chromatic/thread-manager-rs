@@ -5,9 +5,8 @@ use crate::channel::JobChannel;
 use crate::channel::ResultChannel;
 use crate::dispatch::DispatchCycle;
 use crate::status::ManagerStatus;
+use crate::types::FnType;
 use crate::worker::ThreadWorker;
-
-pub type FnType<T> = Box<dyn Fn() -> T + Send + 'static>;
 
 pub struct ThreadManager<T>
 where
@@ -31,7 +30,7 @@ where
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
         let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
 
-        let mut manager: ThreadManager<T> = ThreadManager {
+        let mut manager: ThreadManager<T> = Self {
             dispatch,
             workers,
             job_channel,

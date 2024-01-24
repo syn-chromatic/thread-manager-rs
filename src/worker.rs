@@ -39,7 +39,7 @@ where
         let signals: Arc<WorkerSignals> = Arc::new(WorkerSignals::new());
         let worker_status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
 
-        ThreadWorker {
+        Self {
             id,
             thread,
             signals,

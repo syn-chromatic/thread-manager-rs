@@ -31,7 +31,7 @@ impl<T> JobChannel<T> {
         let receiver: Mutex<Receiver<MessageKind<T>>> = Mutex::new(receiver);
         let status: ChannelStatus = ChannelStatus::new();
 
-        JobChannel {
+        Self {
             sender,
             receiver,
             status,
@@ -156,7 +156,7 @@ impl<T> ResultChannel<T> {
         let receiver: Mutex<Receiver<T>> = Mutex::new(receiver);
         let status: ChannelStatus = ChannelStatus::new();
 
-        ResultChannel {
+        Self {
             sender,
             receiver,
             status,
