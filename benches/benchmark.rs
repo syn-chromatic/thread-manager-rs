@@ -10,7 +10,7 @@ fn benchmark_test() {
     let pi_terms: usize = 50_000_000;
     let jobs: usize = 1_000;
 
-    let threads: usize = 1024;
+    let threads: usize = 12;
     thread_manager_benchmark(pi_terms, jobs, threads);
     println!();
     single_thread_benchmark(pi_terms, jobs);

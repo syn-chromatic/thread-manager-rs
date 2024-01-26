@@ -12,9 +12,9 @@ thread-manager = "*"
 
 ___
 ### `➢` Features
-* **Job Submission:** Submit jobs to be executed in parallel, distributing them efficiently across worker threads.
+* **Job Submission:** Easily submit jobs for parallel execution, which are then efficiently distributed among worker threads for optimal performance.
 
-* **Result Retrieval:** You can retrieve the results during execution, by immediately fetching the available results, or sequentially retrieve them as each job completes, and even allowing submitting additional jobs while iterating over the results!
+* **Result Retrieval:** You can retrieve results during execution by either immediately fetching the available results or yielding them as each job completes. This process also allows for the submission of additional jobs while iterating over the results!
 
 * **Pool Resizing:** Offers the capability to resize the thread manager during execution, to optimize resource allocation according to the current workload.
 
