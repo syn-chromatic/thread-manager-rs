@@ -3,27 +3,25 @@ use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::thread;
 
-use crate::status::WorkerSignals;
-
 use crate::order::LOAD_ORDER;
 use crate::order::STORE_ORDER;
 
 pub struct ThreadLooper {
     status: Arc<AtomicBool>,
-    signals: Arc<WorkerSignals>,
     thread: Cell<Option<thread::JoinHandle<()>>>,
+    termination: Arc<AtomicBool>,
 }
 
 impl ThreadLooper {
     pub fn new() -> Self {
         let status: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let signals: Arc<WorkerSignals> = Arc::new(WorkerSignals::new());
         let thread: Cell<Option<thread::JoinHandle<()>>> = Cell::new(None);
+        let termination: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
 
         Self {
             status,
-            signals,
             thread,
+            termination,
         }
     }
 
@@ -43,7 +41,7 @@ impl ThreadLooper {
     }
 
     pub fn terminate(&self) {
-        self.signals.set_termination_signal(true);
+        self.termination.store(true, STORE_ORDER);
         if let Some(thread) = self.thread.take() {
             let _ = thread.join();
         }
@@ -51,11 +49,11 @@ impl ThreadLooper {
 }
 
 impl ThreadLooper {
-    fn looper<F>(function: &F, signals: &Arc<WorkerSignals>)
+    fn looper<F>(function: &F, termination: &Arc<AtomicBool>)
     where
         F: Fn() -> () + Send + 'static,
     {
-        while !signals.termination_signal() {
+        while !termination.load(LOAD_ORDER) {
             function();
         }
     }
@@ -65,12 +63,12 @@ impl ThreadLooper {
         F: Fn() -> () + Send + 'static,
     {
         let status: Arc<AtomicBool> = self.status.clone();
-        let signals: Arc<WorkerSignals> = self.signals.clone();
+        let termination: Arc<AtomicBool> = self.termination.clone();
 
         let worker = move || {
-            Self::looper(&function, &signals);
+            Self::looper(&function, &termination);
             status.store(false, STORE_ORDER);
-            signals.set_termination_signal(false);
+            termination.store(false, STORE_ORDER);
         };
         worker
     }

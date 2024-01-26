@@ -26,18 +26,15 @@ impl ManagerStatus {
     }
 
     pub fn active_threads(&self) -> usize {
-        let active_threads: usize = self.active_threads.load(LOAD_ORDER);
-        active_threads
+        self.active_threads.load(LOAD_ORDER)
     }
 
     pub fn waiting_threads(&self) -> usize {
-        let waiting_threads: usize = self.waiting_threads.load(LOAD_ORDER);
-        waiting_threads
+        self.waiting_threads.load(LOAD_ORDER)
     }
 
     pub fn busy_threads(&self) -> usize {
-        let busy_threads: usize = self.busy_threads.load(LOAD_ORDER);
-        busy_threads
+        self.busy_threads.load(LOAD_ORDER)
     }
 
     pub fn set_active(&self, state: bool) {
@@ -66,7 +63,6 @@ pub struct WorkerStatus {
     active: Arc<AtomicBool>,
     waiting: Arc<AtomicBool>,
     busy: Arc<AtomicBool>,
-    received: Arc<AtomicUsize>,
 }
 
 impl WorkerStatus {
@@ -74,13 +70,11 @@ impl WorkerStatus {
         let active: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let waiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
         let busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let received: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
 
         Self {
             active,
             waiting,
             busy,
-            received,
         }
     }
 
@@ -96,14 +90,6 @@ impl WorkerStatus {
         self.busy.load(LOAD_ORDER)
     }
 
-    pub fn received(&self) -> usize {
-        self.received.load(LOAD_ORDER)
-    }
-
-    pub fn add_received(&self) {
-        self.received.fetch_add(1, FETCH_ORDER);
-    }
-
     pub fn set_active(&self, state: bool) {
         self.active.store(state, STORE_ORDER);
     }
@@ -114,25 +100,6 @@ impl WorkerStatus {
 
     pub fn set_busy(&self, state: bool) {
         self.busy.store(state, STORE_ORDER);
-    }
-}
-
-pub struct WorkerSignals {
-    termination: Arc<AtomicBool>,
-}
-
-impl WorkerSignals {
-    pub fn new() -> Self {
-        let termination: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        Self { termination }
-    }
-
-    pub fn termination_signal(&self) -> bool {
-        self.termination.load(LOAD_ORDER)
-    }
-
-    pub fn set_termination_signal(&self, state: bool) {
-        self.termination.store(state, STORE_ORDER);
     }
 }
 

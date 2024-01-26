@@ -1,9 +1,10 @@
-use std::sync::mpsc::RecvError;
 use std::sync::Arc;
 
 use crate::channel::JobChannel;
 use crate::channel::ResultChannel;
 use crate::dispatch::DispatchCycle;
+use crate::iterator::ResultIter;
+use crate::iterator::YieldResultIter;
 use crate::status::ManagerStatus;
 use crate::types::FnType;
 use crate::worker::ThreadWorker;
@@ -14,7 +15,6 @@ where
 {
     dispatch: DispatchCycle,
     workers: Vec<ThreadWorker<FnType<T>, T>>,
-    job_channel: Arc<JobChannel<FnType<T>>>,
     result_channel: Arc<ResultChannel<T>>,
     manager_status: Arc<ManagerStatus>,
 }
@@ -25,15 +25,13 @@ where
 {
     pub fn new(size: usize) -> Self {
         let dispatch: DispatchCycle = DispatchCycle::new(size);
-        let job_channel: Arc<JobChannel<FnType<T>>> = Arc::new(JobChannel::new());
+        let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
         let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
-        let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
 
         let mut manager: ThreadManager<T> = Self {
             dispatch,
             workers,
-            job_channel,
             result_channel,
             manager_status,
         };
@@ -50,20 +48,20 @@ where
         worker.send(Box::new(function));
     }
 
-    pub fn set_thread_size(&mut self, size: usize) {
-        let max_id: usize = self.dispatch.fetch_max();
+    pub fn resize(&mut self, size: usize) {
+        let dispatch_size: usize = self.dispatch.fetch_size();
 
         if size > self.workers.len() {
             let additional_size: usize = size - self.workers.len();
-            self.start_workers(max_id, self.workers.len());
+            self.start_workers(dispatch_size, self.workers.len());
             self.create_workers(additional_size);
-            self.dispatch.set_max(size);
-        } else if size < max_id {
-            self.send_termination_workers(size, max_id);
-            self.dispatch.set_max(size);
-        } else if size > max_id {
-            self.start_workers(max_id, size);
-            self.dispatch.set_max(size);
+            self.dispatch.set_size(size);
+        } else if size < dispatch_size {
+            self.set_termination_workers(size, dispatch_size);
+            self.dispatch.set_size(size);
+        } else if size > dispatch_size {
+            self.start_workers(dispatch_size, size);
+            self.dispatch.set_size(size);
         }
     }
 }
@@ -77,11 +75,10 @@ where
 
         for idx in 0..size {
             let id: usize = idx + worker_size;
-            let job_channel: Arc<JobChannel<FnType<T>>> = self.job_channel.clone();
             let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
             let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
             let worker: ThreadWorker<FnType<T>, T> =
-                ThreadWorker::new(id, job_channel, result_channel, manager_status);
+                ThreadWorker::new(id, result_channel, manager_status);
 
             worker.start();
             self.workers.push(worker);
@@ -93,33 +90,43 @@ impl<T> ThreadManager<T>
 where
     T: Send + 'static,
 {
-    pub fn results<'a>(&'a self) -> ResultIterator<'a, T> {
-        ResultIterator::new(&self.job_channel, &self.result_channel)
-    }
-
     pub fn join(&self) {
         self.send_release_workers(0, self.workers.len());
         self.join_workers(0, self.workers.len());
-        self.job_channel.clear();
+        self.clear_job_channel_workers(0, self.workers.len());
     }
 
     pub fn terminate_all(&self) {
-        self.send_termination_workers(0, self.workers.len());
+        self.set_termination_workers(0, self.workers.len());
         self.send_release_workers(0, self.workers.len());
         self.join_workers(0, self.workers.len());
-        self.job_channel.clear();
+        self.clear_job_channel_workers(0, self.workers.len());
     }
 
     pub fn job_distribution(&self) -> Vec<usize> {
-        let mut received_jobs: Vec<usize> = Vec::with_capacity(self.workers.len());
+        let mut distribution: Vec<usize> = Vec::with_capacity(self.workers.len());
         for worker in self.workers.iter() {
-            received_jobs.push(worker.status().received());
+            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+            distribution.push(job_channel.status().received());
         }
-        received_jobs
+        distribution
     }
 
     pub fn has_finished(&self) -> bool {
-        self.job_channel.is_finished()
+        for worker in self.workers.iter() {
+            if !worker.job_channel().is_finished() {
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn results<'a>(&'a self) -> ResultIter<'a, T> {
+        ResultIter::new(&self.result_channel)
+    }
+
+    pub fn yield_results<'a>(&'a self) -> YieldResultIter<'a, T> {
+        YieldResultIter::new(&self.workers, &self.result_channel)
     }
 
     pub fn active_threads(&self) -> usize {
@@ -135,19 +142,39 @@ where
     }
 
     pub fn job_queue(&self) -> usize {
-        self.job_channel.status().pending()
+        let mut queue: usize = 0;
+        for worker in self.workers.iter() {
+            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+            queue += job_channel.status().pending();
+        }
+        queue
     }
 
     pub fn sent_jobs(&self) -> usize {
-        self.job_channel.status().sent()
+        let mut sent: usize = 0;
+        for worker in self.workers.iter() {
+            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+            sent += job_channel.status().sent();
+        }
+        sent
     }
 
     pub fn received_jobs(&self) -> usize {
-        self.job_channel.status().received()
+        let mut received: usize = 0;
+        for worker in self.workers.iter() {
+            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+            received += job_channel.status().received();
+        }
+        received
     }
 
-    pub fn completed_jobs(&self) -> usize {
-        self.job_channel.status().concluded()
+    pub fn concluded_jobs(&self) -> usize {
+        let mut concluded: usize = 0;
+        for worker in self.workers.iter() {
+            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+            concluded += job_channel.status().concluded();
+        }
+        concluded
     }
 }
 
@@ -167,15 +194,21 @@ where
         }
     }
 
-    fn send_termination_workers(&self, st: usize, en: usize) {
+    fn clear_job_channel_workers(&self, st: usize, en: usize) {
         for worker in self.workers[st..en].iter() {
-            worker.send_termination_signal();
+            worker.job_channel().clear();
+        }
+    }
+
+    fn set_termination_workers(&self, st: usize, en: usize) {
+        for worker in self.workers[st..en].iter() {
+            worker.set_termination();
         }
     }
 
     fn send_release_workers(&self, st: usize, en: usize) {
         for worker in self.workers[st..en].iter() {
-            worker.send_release_signal();
+            worker.send_release();
         }
     }
 }
@@ -186,41 +219,5 @@ where
 {
     fn drop(&mut self) {
         self.terminate_all();
-    }
-}
-
-pub struct ResultIterator<'a, T> {
-    job_channel: &'a Arc<JobChannel<FnType<T>>>,
-    result_channel: &'a Arc<ResultChannel<T>>,
-}
-
-impl<'a, T> ResultIterator<'a, T> {
-    pub fn new(
-        job_channel: &'a Arc<JobChannel<FnType<T>>>,
-        result_channel: &'a Arc<ResultChannel<T>>,
-    ) -> Self {
-        Self {
-            job_channel,
-            result_channel,
-        }
-    }
-
-    pub fn has_results(&self) -> bool {
-        !self.result_channel.is_finished()
-    }
-}
-
-impl<'a, T> Iterator for ResultIterator<'a, T> {
-    type Item = T;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if !self.job_channel.is_finished() || !self.result_channel.is_finished() {
-            let result: Result<T, RecvError> = self.result_channel.recv();
-            self.result_channel.status().add_concluded();
-            if let Ok(result) = result {
-                return Some(result);
-            }
-        }
-        None
     }
 }

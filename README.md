@@ -1,7 +1,7 @@
 ## `⌽` Thread Manager
 Thread Manager is a Rust library that provides a simple and efficient way to manage a pool of threads for executing jobs in parallel.
 
-It is designed to abstract away the complexities of thread management and provides a convenient interface for parallelizing workloads with zero dependencies.
+It is designed to abstract away the complexities of thread management and provides a convenient interface for parallelizing workloads without requiring additional dependencies.
 
 
 #### Add to `Cargo.toml`
@@ -12,13 +12,15 @@ thread-manager = "*"
 
 ___
 ### `➢` Features
-* **Dynamic Thread Management:** ThreadManager allows dynamic resizing of the thread pool, enabling efficient resource utilization based on the workload.
+* **Job Submission:** Submit jobs to be executed in parallel, distributing them efficiently across worker threads.
 
-* **Job Execution:** Submit jobs for execution, and ThreadManager will distribute them among the available worker threads.
+* **Result Retrieval:** You can retrieve the results during execution, by immediately fetching the available results, or sequentially retrieve them as each job completes, and even allowing submitting additional jobs while iterating over the results!
 
-* **Thread Status Monitoring:** ThreadManager provides various methods to monitor the status of the thread pool, including active threads, busy threads, waiting threads, job distribution among threads, and more.
+* **Pool Resizing:** Offers the capability to resize the thread manager during execution, to optimize resource allocation according to the current workload.
 
-* **Graceful Termination:** The library supports graceful termination of threads, ensuring that all pending jobs are completed before shutting down.
+* **Thread Monitoring:** Keep track of your thread manager with detailed insights, including thread activity, workload distribution, and more.
+
+* **Graceful Termination:** Supports graceful termination of worker threads, ensuring that currently executing jobs are concluded before shutting down.
 
 
 ___
@@ -36,22 +38,21 @@ fn main() {
         // Your job logic here
     });
 
+    // Optional ways to proceed after executing a job
+    //
+    // Resize the number of worker threads
+    thread_manager.resize(6);
 
-    // Optional ways to proceed after executing a job.
-    // ...
-    // Increase the number of threads dynamically
-    thread_manager.set_thread_size(6);
-
-    // Terminate all threads gracefully and join
-    thread_manager.terminate_all();
-
-    // Join and wait for all threads to complete
+    // Wait for all worker threads to complete
     thread_manager.join();
+
+    // Terminate all worker threads gracefully and join
+    thread_manager.terminate_all();
 }
 ```
 
 
-#### `⤷` Retrieve Results
+#### `⤷` Retrieving Results
 ```rust
 fn main() {
     // Create ThreadManager with 4 worker threads
@@ -63,16 +64,18 @@ fn main() {
         return 50.0 / 32.0;
     });
 
-    // The iterator [same as .next()] blocks if there are
-    // no results but there are jobs remaining,
-    // This way the 'for loop' only completes when all jobs are executed.
+    // The ResultIter retrieves all the available results without blocking
     for result in thread_manager.results() {
         println!("{}", result);
     }
 
-    // Check if results are available and retrieve one
-    if thread_manager.results().has_results() {
-        let result: Option<f32> = thread_manager.results().next();
+    // The YieldResultIter blocks if there are jobs in the queue
+    // This way the 'for loop' only completes when all jobs are executed
+    for result in thread_manager.yield_results() {
+        println!("{}", result);
+        // You can execute jobs while iterating over the results
+        // Beware that it will run indefinitely if there is no condition for execution
+        // As it will execute and yield a result in the same loop
     }
 }
 ```
@@ -81,33 +84,33 @@ fn main() {
 #### `⤷` Monitoring Status And Job Information
 ```rust
 fn main() {
-    // ... Create thread manager and execute jobs.
+    // ... Create thread manager and execute jobs
 
-    // Threads that are spawned that could be busy or waiting.
+    // Worker threads that could be busy or waiting
     let active_threads: usize = thread_manager.active_threads();
 
-    // Threads that are busy and currently executing a job.
+    // Worker threads that are busy and executing a job
     let busy_threads: usize = thread_manager.busy_threads();
 
-    // Threads that are waiting to receive a job.
+    // Worker threads that are waiting to receive a job
     let waiting_threads: usize = thread_manager.waiting_threads();
 
-    // The amount of jobs left in the queue.
+    // The amount of jobs left in the queue
     let job_queue: usize = thread_manager.job_queue();
 
-    // The job distribution that are executed among threads
-    // Example distribution of 4 threads:
-    // [3, 3, 3, 4] => each value is the amount of jobs executed for each thread.
+    // The job distribution of execution across worker threads
+    // Example distribution of 4 worker threads:
+    // [4, 3, 3, 3] => each value is the amount of jobs executed for each worker
     let job_distribution: Vec<usize> = thread_manager.job_distribution();
 
-    // The amount of jobs received among all threads.
+    // The total amount of jobs received across worker threads
     let received_jobs: usize = thread_manager.received_jobs();
 
-    // The amount of jobs sent to all threads.
+    // The total amount of jobs sent across worker threads
     let sent_jobs: usize = thread_manager.sent_jobs();
 
-    // The amount of jobs completed among all threads.
-    let completed_jobs: usize = thread_manager.completed_jobs();
+    // The total amount of jobs concluded across worker threads
+    let concluded_jobs: usize = thread_manager.concluded_jobs();
 }
 ```
 
@@ -115,12 +118,6 @@ fn main() {
 ___
 ### `➢` To-Do
 - [ ] — Add documentation
-- [x] — Implement result iterator
-
-
-___
-### `➢` Known Issues
-- ~~Worker signaling causes inaccurate report of job distribution~~
 
 
 ___
