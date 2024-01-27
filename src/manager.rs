@@ -75,6 +75,7 @@ where
     }
 
     pub fn resize(&mut self, size: usize) {
+        Self::assert_wpc(size, self.wpc);
         let dispatch_size: usize = self.dispatch.fetch_size();
 
         if size > self.workers.len() {
