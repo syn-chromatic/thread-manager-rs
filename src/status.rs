@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::AtomicUsize;
 
@@ -8,16 +6,16 @@ use crate::order::LOAD_ORDER;
 use crate::order::STORE_ORDER;
 
 pub struct ManagerStatus {
-    active_threads: Arc<AtomicUsize>,
-    waiting_threads: Arc<AtomicUsize>,
-    busy_threads: Arc<AtomicUsize>,
+    active_threads: AtomicUsize,
+    waiting_threads: AtomicUsize,
+    busy_threads: AtomicUsize,
 }
 
 impl ManagerStatus {
     pub fn new() -> Self {
-        let active_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let waiting_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let busy_threads: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let active_threads: AtomicUsize = AtomicUsize::new(0);
+        let waiting_threads: AtomicUsize = AtomicUsize::new(0);
+        let busy_threads: AtomicUsize = AtomicUsize::new(0);
         Self {
             active_threads,
             waiting_threads,
@@ -60,16 +58,16 @@ impl ManagerStatus {
 }
 
 pub struct WorkerStatus {
-    active: Arc<AtomicBool>,
-    waiting: Arc<AtomicBool>,
-    busy: Arc<AtomicBool>,
+    active: AtomicBool,
+    waiting: AtomicBool,
+    busy: AtomicBool,
 }
 
 impl WorkerStatus {
     pub fn new() -> Self {
-        let active: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let waiting: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let busy: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+        let active: AtomicBool = AtomicBool::new(false);
+        let waiting: AtomicBool = AtomicBool::new(false);
+        let busy: AtomicBool = AtomicBool::new(false);
 
         Self {
             active,
@@ -104,20 +102,20 @@ impl WorkerStatus {
 }
 
 pub struct ChannelStatus {
-    sent: Arc<AtomicUsize>,
-    sending: Arc<AtomicUsize>,
-    received: Arc<AtomicUsize>,
-    receiving: Arc<AtomicUsize>,
-    concluded: Arc<AtomicUsize>,
+    sent: AtomicUsize,
+    sending: AtomicUsize,
+    received: AtomicUsize,
+    receiving: AtomicUsize,
+    concluded: AtomicUsize,
 }
 
 impl ChannelStatus {
     pub fn new() -> Self {
-        let sent: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let sending: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let received: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let receiving: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
-        let concluded: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let sent: AtomicUsize = AtomicUsize::new(0);
+        let sending: AtomicUsize = AtomicUsize::new(0);
+        let received: AtomicUsize = AtomicUsize::new(0);
+        let receiving: AtomicUsize = AtomicUsize::new(0);
+        let concluded: AtomicUsize = AtomicUsize::new(0);
 
         Self {
             sent,

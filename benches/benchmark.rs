@@ -82,5 +82,5 @@ fn thread_manager_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
 
     write_elapsed_time(&now);
     write_thread_metrics(&thread_manager);
-    println!("Distribution: {:?}", thread_manager.job_distribution());
+    println!("\nDistribution: {:?}", thread_manager.job_distribution());
 }

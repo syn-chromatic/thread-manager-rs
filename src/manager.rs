@@ -15,6 +15,7 @@ where
 {
     dispatch: DispatchCycle,
     workers: Vec<ThreadWorker<FnType<T>, T>>,
+    channels: Vec<Arc<JobChannel<FnType<T>>>>,
     result_channel: Arc<ResultChannel<T>>,
     manager_status: Arc<ManagerStatus>,
 }
@@ -26,12 +27,14 @@ where
     pub fn new(size: usize) -> Self {
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
+        let channels: Vec<Arc<JobChannel<FnType<T>>>> = Vec::with_capacity(size);
         let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
 
         let mut manager: ThreadManager<T> = Self {
             dispatch,
             workers,
+            channels,
             result_channel,
             manager_status,
         };
@@ -70,15 +73,25 @@ impl<T> ThreadManager<T>
 where
     T: Send + 'static,
 {
+    fn create_channels(&mut self, size: usize) {
+        for _ in 0..size {
+            let channel: JobChannel<FnType<T>> = JobChannel::new();
+            let channel: Arc<JobChannel<FnType<T>>> = Arc::new(channel);
+            self.channels.push(channel);
+        }
+    }
+
     fn create_workers(&mut self, size: usize) {
+        self.create_channels(size);
         let worker_size: usize = self.workers.len();
 
         for idx in 0..size {
             let id: usize = idx + worker_size;
+            let job_channel: Arc<JobChannel<FnType<T>>> = self.channels[idx].clone();
             let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
             let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
             let worker: ThreadWorker<FnType<T>, T> =
-                ThreadWorker::new(id, result_channel, manager_status);
+                ThreadWorker::new(id, job_channel, result_channel, manager_status);
 
             worker.start();
             self.workers.push(worker);
@@ -105,16 +118,15 @@ where
 
     pub fn job_distribution(&self) -> Vec<usize> {
         let mut distribution: Vec<usize> = Vec::with_capacity(self.workers.len());
-        for worker in self.workers.iter() {
-            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+        for job_channel in self.channels.iter() {
             distribution.push(job_channel.status().received());
         }
         distribution
     }
 
     pub fn has_finished(&self) -> bool {
-        for worker in self.workers.iter() {
-            if !worker.job_channel().is_finished() {
+        for job_channel in self.channels.iter() {
+            if !job_channel.is_finished() {
                 return false;
             }
         }
@@ -143,8 +155,7 @@ where
 
     pub fn job_queue(&self) -> usize {
         let mut queue: usize = 0;
-        for worker in self.workers.iter() {
-            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+        for job_channel in self.channels.iter() {
             queue += job_channel.status().pending();
         }
         queue
@@ -152,8 +163,7 @@ where
 
     pub fn sent_jobs(&self) -> usize {
         let mut sent: usize = 0;
-        for worker in self.workers.iter() {
-            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+        for job_channel in self.channels.iter() {
             sent += job_channel.status().sent();
         }
         sent
@@ -161,8 +171,7 @@ where
 
     pub fn received_jobs(&self) -> usize {
         let mut received: usize = 0;
-        for worker in self.workers.iter() {
-            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+        for job_channel in self.channels.iter() {
             received += job_channel.status().received();
         }
         received
@@ -170,8 +179,7 @@ where
 
     pub fn concluded_jobs(&self) -> usize {
         let mut concluded: usize = 0;
-        for worker in self.workers.iter() {
-            let job_channel: &Arc<JobChannel<FnType<T>>> = worker.job_channel();
+        for job_channel in self.channels.iter() {
             concluded += job_channel.status().concluded();
         }
         concluded
@@ -195,8 +203,8 @@ where
     }
 
     fn clear_job_channel_workers(&self, st: usize, en: usize) {
-        for worker in self.workers[st..en].iter() {
-            worker.job_channel().clear();
+        for job_channel in self.channels[st..en].iter() {
+            job_channel.clear();
         }
     }
 

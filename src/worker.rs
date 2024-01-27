@@ -34,12 +34,12 @@ where
 {
     pub fn new(
         id: usize,
+        job_channel: Arc<JobChannel<F>>,
         result_channel: Arc<ResultChannel<T>>,
         manager_status: Arc<ManagerStatus>,
     ) -> Self {
         let thread: Cell<Option<thread::JoinHandle<()>>> = Cell::new(None);
         let termination: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
-        let job_channel: Arc<JobChannel<F>> = Arc::new(JobChannel::new());
         let worker_status: Arc<WorkerStatus> = Arc::new(WorkerStatus::new());
 
         Self {
