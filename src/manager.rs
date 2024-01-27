@@ -134,14 +134,14 @@ where
     pub fn join(&self) {
         self.send_release_workers(0, self.workers.len());
         self.join_workers(0, self.workers.len());
-        self.clear_job_channel_workers(0, self.workers.len());
+        self.clear_channels(0, self.channels.len());
     }
 
     pub fn terminate_all(&self) {
         self.set_termination_workers(0, self.workers.len());
         self.send_release_workers(0, self.workers.len());
         self.join_workers(0, self.workers.len());
-        self.clear_job_channel_workers(0, self.workers.len());
+        self.clear_channels(0, self.channels.len());
     }
 
     pub fn job_distribution(&self) -> Vec<usize> {
@@ -230,8 +230,8 @@ where
         }
     }
 
-    fn clear_job_channel_workers(&self, st: usize, en: usize) {
-        for job_channel in self.channels[st / self.wpc..en / self.wpc].iter() {
+    fn clear_channels(&self, st: usize, en: usize) {
+        for job_channel in self.channels[st..en].iter() {
             job_channel.clear();
         }
     }
