@@ -60,7 +60,7 @@ where
             self.create_workers(additional_size);
             self.dispatch.set_size(size);
         } else if size < dispatch_size {
-            self.set_termination_workers(size, dispatch_size);
+            self.send_release_workers(size, dispatch_size);
             self.dispatch.set_size(size);
         } else if size > dispatch_size {
             self.start_workers(dispatch_size, size);
@@ -119,7 +119,7 @@ where
     pub fn job_distribution(&self) -> Vec<usize> {
         let mut distribution: Vec<usize> = Vec::with_capacity(self.workers.len());
         for job_channel in self.channels.iter() {
-            distribution.push(job_channel.status().received());
+            distribution.push(job_channel.status().concluded());
         }
         distribution
     }
