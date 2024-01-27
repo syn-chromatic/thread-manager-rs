@@ -26,7 +26,6 @@ where
     T: Send + 'static,
 {
     pub fn new(size: usize) -> Self {
-        let wpc: usize = 1;
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
         let channels: Vec<Arc<JobChannel<FnType<T>>>> = Vec::with_capacity(size);
@@ -34,7 +33,7 @@ where
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
 
         let mut manager: ThreadManager<T> = Self {
-            wpc,
+            wpc: 1,
             dispatch,
             workers,
             channels,
@@ -46,7 +45,7 @@ where
     }
 
     pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
-        Self::assert_wpc(size, wpc);
+        assert_wpc(size, wpc);
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
         let channels: Vec<Arc<JobChannel<FnType<T>>>> = Vec::with_capacity(size);
@@ -75,7 +74,7 @@ where
     }
 
     pub fn resize(&mut self, size: usize) {
-        Self::assert_wpc(size, self.wpc);
+        assert_wpc(size, self.wpc);
         let dispatch_size: usize = self.dispatch.fetch_size();
 
         if size > self.workers.len() {
@@ -97,15 +96,6 @@ impl<T> ThreadManager<T>
 where
     T: Send + 'static,
 {
-    fn assert_wpc(size: usize, wpc: usize) {
-        assert!(
-            size % wpc == 0,
-            "Assertion failed: Size ({}) must be divisible by WPC ({})",
-            size,
-            wpc
-        );
-    }
-
     fn get_channel(&self, id: usize) -> Arc<JobChannel<FnType<T>>> {
         let channel_id: usize = id / self.wpc;
         self.channels[channel_id].clone()
@@ -266,4 +256,13 @@ where
     fn drop(&mut self) {
         self.terminate_all();
     }
+}
+
+fn assert_wpc(size: usize, wpc: usize) {
+    assert!(
+        size % wpc == 0,
+        "Assertion failed: Size ({}) must be divisible by WPC ({})",
+        size,
+        wpc
+    );
 }
