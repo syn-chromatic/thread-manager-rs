@@ -87,7 +87,7 @@ where
 
         for idx in 0..size {
             let id: usize = idx + worker_size;
-            let job_channel: Arc<JobChannel<FnType<T>>> = self.channels[idx].clone();
+            let job_channel: Arc<JobChannel<FnType<T>>> = self.channels[id].clone();
             let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
             let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
             let worker: ThreadWorker<FnType<T>, T> =
