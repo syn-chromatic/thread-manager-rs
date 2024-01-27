@@ -20,7 +20,8 @@ fn asymmetric_benchmark_test() {
     let jobs: usize = 1_000;
 
     let threads: usize = 12;
-    start_asymmetric_benchmark(pi_terms, jobs, threads);
+    let wpc: usize = 6;
+    start_asymmetric_benchmark(pi_terms, jobs, threads, wpc);
 }
 
 #[test]
@@ -88,9 +89,9 @@ fn start_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
     println!("\nDistribution: {:?}", thread_manager.job_distribution());
 }
 
-fn start_asymmetric_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
+fn start_asymmetric_benchmark(pi_terms: usize, jobs: usize, threads: usize, wpc: usize) {
     println!("[THREAD MANAGER ASYMMETRIC BENCHMARK]");
-    let thread_manager: ThreadManager<f64> = ThreadManager::new_asymmetric(threads, 6);
+    let thread_manager: ThreadManager<f64> = ThreadManager::new_asymmetric(threads, wpc);
     let now: Instant = Instant::now();
 
     add_thread_jobs(&thread_manager, pi_terms, jobs);
