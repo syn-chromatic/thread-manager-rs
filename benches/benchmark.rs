@@ -11,9 +11,24 @@ fn benchmark_test() {
     let jobs: usize = 1_000;
 
     let threads: usize = 12;
-    thread_manager_benchmark(pi_terms, jobs, threads);
-    println!();
-    single_thread_benchmark(pi_terms, jobs);
+    start_benchmark(pi_terms, jobs, threads);
+}
+
+#[test]
+fn asymmetric_benchmark_test() {
+    let pi_terms: usize = 50_000_000;
+    let jobs: usize = 1_000;
+
+    let threads: usize = 12;
+    start_asymmetric_benchmark(pi_terms, jobs, threads);
+}
+
+#[test]
+fn st_benchmark_test() {
+    let pi_terms: usize = 50_000_000;
+    let jobs: usize = 1_000;
+
+    start_st_benchmark(pi_terms, jobs);
 }
 
 fn write_thread_metrics(thread_manager: &ThreadManager<f64>) {
@@ -59,19 +74,7 @@ fn write_elapsed_time(now: &Instant) {
     println!("\nTime: {}", elapsed);
 }
 
-fn single_thread_benchmark(pi_terms: usize, jobs: usize) {
-    println!("[SINGLE THREAD BENCHMARK]");
-    let now: Instant = Instant::now();
-
-    for _ in 0..jobs {
-        let pi: f64 = estimate_pi_leibniz(pi_terms);
-        black_box(pi);
-    }
-
-    write_elapsed_time(&now);
-}
-
-fn thread_manager_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
+fn start_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
     println!("[THREAD MANAGER BENCHMARK]");
     let thread_manager: ThreadManager<f64> = ThreadManager::new(threads);
     let now: Instant = Instant::now();
@@ -83,4 +86,30 @@ fn thread_manager_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
     write_elapsed_time(&now);
     write_thread_metrics(&thread_manager);
     println!("\nDistribution: {:?}", thread_manager.job_distribution());
+}
+
+fn start_asymmetric_benchmark(pi_terms: usize, jobs: usize, threads: usize) {
+    println!("[THREAD MANAGER ASYMMETRIC BENCHMARK]");
+    let thread_manager: ThreadManager<f64> = ThreadManager::new_asymmetric(threads, 6);
+    let now: Instant = Instant::now();
+
+    add_thread_jobs(&thread_manager, pi_terms, jobs);
+    pending_thread_metrics(&thread_manager);
+    thread_manager.join();
+
+    write_elapsed_time(&now);
+    write_thread_metrics(&thread_manager);
+    println!("\nDistribution: {:?}", thread_manager.job_distribution());
+}
+
+fn start_st_benchmark(pi_terms: usize, jobs: usize) {
+    println!("[SINGLE THREAD BENCHMARK]");
+    let now: Instant = Instant::now();
+
+    for _ in 0..jobs {
+        let pi: f64 = estimate_pi_leibniz(pi_terms);
+        black_box(pi);
+    }
+
+    write_elapsed_time(&now);
 }

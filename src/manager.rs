@@ -13,6 +13,7 @@ pub struct ThreadManager<T>
 where
     T: Send + 'static,
 {
+    wpc: usize,
     dispatch: DispatchCycle,
     workers: Vec<ThreadWorker<FnType<T>, T>>,
     channels: Vec<Arc<JobChannel<FnType<T>>>>,
@@ -25,6 +26,7 @@ where
     T: Send + 'static,
 {
     pub fn new(size: usize) -> Self {
+        let wpc: usize = 1;
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
         let channels: Vec<Arc<JobChannel<FnType<T>>>> = Vec::with_capacity(size);
@@ -32,6 +34,27 @@ where
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
 
         let mut manager: ThreadManager<T> = Self {
+            wpc,
+            dispatch,
+            workers,
+            channels,
+            result_channel,
+            manager_status,
+        };
+        manager.create_workers(size);
+        manager
+    }
+
+    pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
+        Self::assert_wpc(size, wpc);
+        let dispatch: DispatchCycle = DispatchCycle::new(size);
+        let workers: Vec<ThreadWorker<FnType<T>, T>> = Vec::with_capacity(size);
+        let channels: Vec<Arc<JobChannel<FnType<T>>>> = Vec::with_capacity(size);
+        let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
+        let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
+
+        let mut manager: ThreadManager<T> = Self {
+            wpc,
             dispatch,
             workers,
             channels,
@@ -73,8 +96,22 @@ impl<T> ThreadManager<T>
 where
     T: Send + 'static,
 {
+    fn assert_wpc(size: usize, wpc: usize) {
+        assert!(
+            size % wpc == 0,
+            "Assertion failed: Size ({}) must be divisible by WPC ({})",
+            size,
+            wpc
+        );
+    }
+
+    fn get_channel(&self, id: usize) -> Arc<JobChannel<FnType<T>>> {
+        let channel_id: usize = id / self.wpc;
+        self.channels[channel_id].clone()
+    }
+
     fn create_channels(&mut self, size: usize) {
-        for _ in 0..size {
+        for _ in 0..(size / self.wpc) {
             let channel: JobChannel<FnType<T>> = JobChannel::new();
             let channel: Arc<JobChannel<FnType<T>>> = Arc::new(channel);
             self.channels.push(channel);
@@ -87,7 +124,7 @@ where
 
         for idx in 0..size {
             let id: usize = idx + worker_size;
-            let job_channel: Arc<JobChannel<FnType<T>>> = self.channels[id].clone();
+            let job_channel: Arc<JobChannel<FnType<T>>> = self.get_channel(id);
             let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
             let manager_status: Arc<ManagerStatus> = self.manager_status.clone();
             let worker: ThreadWorker<FnType<T>, T> =
@@ -203,7 +240,7 @@ where
     }
 
     fn clear_job_channel_workers(&self, st: usize, en: usize) {
-        for job_channel in self.channels[st..en].iter() {
+        for job_channel in self.channels[st / self.wpc..en / self.wpc].iter() {
             job_channel.clear();
         }
     }
