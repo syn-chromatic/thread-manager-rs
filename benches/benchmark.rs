@@ -8,7 +8,7 @@ use thread_manager::ThreadManager;
 #[test]
 fn benchmark_test() {
     let pi_terms: usize = 50_000_000;
-    let jobs: usize = 1_000;
+    let jobs: usize = 100;
 
     let threads: usize = 12;
     start_benchmark(pi_terms, jobs, threads);
@@ -17,7 +17,7 @@ fn benchmark_test() {
 #[test]
 fn asymmetric_benchmark_test() {
     let pi_terms: usize = 50_000_000;
-    let jobs: usize = 1_000;
+    let jobs: usize = 100;
 
     let threads: usize = 12;
     let wpc: usize = 6;
@@ -27,7 +27,7 @@ fn asymmetric_benchmark_test() {
 #[test]
 fn st_benchmark_test() {
     let pi_terms: usize = 50_000_000;
-    let jobs: usize = 1_000;
+    let jobs: usize = 100;
 
     start_st_benchmark(pi_terms, jobs);
 }

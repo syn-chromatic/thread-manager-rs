@@ -146,8 +146,8 @@ where
 
     pub fn job_distribution(&self) -> Vec<usize> {
         let mut distribution: Vec<usize> = Vec::with_capacity(self.workers.len());
-        for job_channel in self.channels.iter() {
-            distribution.push(job_channel.status().concluded());
+        for worker in self.workers.iter() {
+            distribution.push(worker.status().received());
         }
         distribution
     }

@@ -148,6 +148,7 @@ where
             if let Ok(message) = recv {
                 match message {
                     MessageKind::Job(job) => {
+                        worker_status.add_received();
                         Self::set_busy(&manager_status, &worker_status, true);
                         result_channel.send(job()).expect("Failed to send result");
                         Self::set_busy(&manager_status, &worker_status, false);

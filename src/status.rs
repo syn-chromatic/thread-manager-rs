@@ -61,6 +61,7 @@ pub struct WorkerStatus {
     active: AtomicBool,
     waiting: AtomicBool,
     busy: AtomicBool,
+    received: AtomicUsize,
 }
 
 impl WorkerStatus {
@@ -68,11 +69,13 @@ impl WorkerStatus {
         let active: AtomicBool = AtomicBool::new(false);
         let waiting: AtomicBool = AtomicBool::new(false);
         let busy: AtomicBool = AtomicBool::new(false);
+        let received: AtomicUsize = AtomicUsize::new(0);
 
         Self {
             active,
             waiting,
             busy,
+            received,
         }
     }
 
@@ -88,6 +91,10 @@ impl WorkerStatus {
         self.busy.load(LOAD_ORDER)
     }
 
+    pub fn received(&self) -> usize {
+        self.received.load(LOAD_ORDER)
+    }
+
     pub fn set_active(&self, state: bool) {
         self.active.store(state, STORE_ORDER);
     }
@@ -98,6 +105,10 @@ impl WorkerStatus {
 
     pub fn set_busy(&self, state: bool) {
         self.busy.store(state, STORE_ORDER);
+    }
+
+    pub fn add_received(&self) {
+        self.received.fetch_add(1, STORE_ORDER);
     }
 }
 
