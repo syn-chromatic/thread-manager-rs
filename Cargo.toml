@@ -10,3 +10,7 @@ keywords = ["thread", "pool", "manager", "parallel", "concurrent"]
 version = "0.9.8"
 edition = "2021"
 license = "MIT"
+
+
+[profile.release]
+opt-level = 0
