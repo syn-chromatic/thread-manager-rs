@@ -12,5 +12,9 @@ edition = "2021"
 license = "MIT"
 
 
+[dependencies]
+crossbeam-channel = "0.5.11"
+
+
 [profile.release]
 opt-level = 0

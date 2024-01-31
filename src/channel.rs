@@ -1,12 +1,10 @@
-use std::sync::Mutex;
-
-use std::sync::mpsc::channel;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::RecvError;
-use std::sync::mpsc::RecvTimeoutError;
-use std::sync::mpsc::SendError;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::TryRecvError;
+use crossbeam_channel::unbounded;
+use crossbeam_channel::Receiver;
+use crossbeam_channel::RecvError;
+use crossbeam_channel::RecvTimeoutError;
+use crossbeam_channel::SendError;
+use crossbeam_channel::Sender;
+use crossbeam_channel::TryRecvError;
 
 use std::time::Duration;
 use std::time::Instant;
@@ -20,15 +18,13 @@ pub enum MessageKind<T> {
 
 pub struct JobChannel<T> {
     sender: Sender<MessageKind<T>>,
-    receiver: Mutex<Receiver<MessageKind<T>>>,
+    receiver: Receiver<MessageKind<T>>,
     status: ChannelStatus,
 }
 
 impl<T> JobChannel<T> {
     pub fn new() -> Self {
-        let (sender, receiver): (Sender<MessageKind<T>>, Receiver<MessageKind<T>>) = channel();
-
-        let receiver: Mutex<Receiver<MessageKind<T>>> = Mutex::new(receiver);
+        let (sender, receiver): (Sender<MessageKind<T>>, Receiver<MessageKind<T>>) = unbounded();
         let status: ChannelStatus = ChannelStatus::new();
 
         Self {
@@ -83,36 +79,36 @@ impl<T> JobChannel<T> {
 
     pub fn recv(&self) -> Result<MessageKind<T>, RecvError> {
         self.status.add_receiving();
-        if let Ok(receiver_guard) = self.receiver.lock() {
-            if let Ok(message) = receiver_guard.recv() {
-                self.on_message_receive(&message);
-                return Ok(message);
-            }
+
+        if let Ok(message) = self.receiver.recv() {
+            self.on_message_receive(&message);
+            return Ok(message);
         }
+
         self.status.sub_receiving();
         Err(RecvError)
     }
 
     pub fn try_recv(&self) -> Result<MessageKind<T>, TryRecvError> {
         self.status.add_receiving();
-        if let Ok(receiver_guard) = self.receiver.lock() {
-            if let Ok(message) = receiver_guard.try_recv() {
-                self.on_message_receive(&message);
-                return Ok(message);
-            }
+
+        if let Ok(message) = self.receiver.try_recv() {
+            self.on_message_receive(&message);
+            return Ok(message);
         }
+
         self.status.sub_receiving();
         Err(TryRecvError::Disconnected)
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Result<MessageKind<T>, RecvTimeoutError> {
         self.status.add_receiving();
-        if let Ok(receiver_guard) = self.receiver.lock() {
-            if let Ok(message) = receiver_guard.recv_timeout(timeout) {
-                self.on_message_receive(&message);
-                return Ok(message);
-            }
+
+        if let Ok(message) = self.receiver.recv_timeout(timeout) {
+            self.on_message_receive(&message);
+            return Ok(message);
         }
+
         self.status.sub_receiving();
         Err(RecvTimeoutError::Disconnected)
     }
@@ -145,15 +141,13 @@ impl<T> JobChannel<T> {
 
 pub struct ResultChannel<T> {
     sender: Sender<T>,
-    receiver: Mutex<Receiver<T>>,
+    receiver: Receiver<T>,
     status: ChannelStatus,
 }
 
 impl<T> ResultChannel<T> {
     pub fn new() -> Self {
-        let (sender, receiver): (Sender<T>, Receiver<T>) = channel();
-
-        let receiver: Mutex<Receiver<T>> = Mutex::new(receiver);
+        let (sender, receiver): (Sender<T>, Receiver<T>) = unbounded();
         let status: ChannelStatus = ChannelStatus::new();
 
         Self {
@@ -191,36 +185,36 @@ impl<T> ResultChannel<T> {
 
     pub fn recv(&self) -> Result<T, RecvError> {
         self.status.add_receiving();
-        if let Ok(receiver_guard) = self.receiver.lock() {
-            if let Ok(result) = receiver_guard.recv() {
-                self.on_result_receive();
-                return Ok(result);
-            }
+
+        if let Ok(result) = self.receiver.recv() {
+            self.on_result_receive();
+            return Ok(result);
         }
+
         self.status.sub_receiving();
         Err(RecvError)
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
         self.status.add_receiving();
-        if let Ok(receiver_guard) = self.receiver.lock() {
-            if let Ok(result) = receiver_guard.try_recv() {
-                self.on_result_receive();
-                return Ok(result);
-            }
+
+        if let Ok(result) = self.receiver.try_recv() {
+            self.on_result_receive();
+            return Ok(result);
         }
+
         self.status.sub_receiving();
         Err(TryRecvError::Disconnected)
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
         self.status.add_receiving();
-        if let Ok(receiver_guard) = self.receiver.lock() {
-            if let Ok(result) = receiver_guard.recv_timeout(timeout) {
-                self.on_result_receive();
-                return Ok(result);
-            }
+
+        if let Ok(result) = self.receiver.recv_timeout(timeout) {
+            self.on_result_receive();
+            return Ok(result);
         }
+
         self.status.sub_receiving();
         Err(RecvTimeoutError::Disconnected)
     }

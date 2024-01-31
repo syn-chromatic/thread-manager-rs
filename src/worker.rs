@@ -1,8 +1,9 @@
 use std::cell::Cell;
 use std::sync::atomic::AtomicBool;
-use std::sync::mpsc::RecvError;
 use std::sync::Arc;
 use std::thread;
+
+use crossbeam_channel::RecvError;
 
 use crate::channel::JobChannel;
 use crate::channel::MessageKind;

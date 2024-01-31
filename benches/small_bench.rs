@@ -7,8 +7,8 @@ use thread_manager::ThreadManager;
 use thread_manager::ThreadManagerStack;
 
 const ITERATIONS: usize = 1_000_000;
-const THREADS: usize = 4;
-const WPC: usize = 4;
+const THREADS: usize = 1;
+const WPC: usize = 1;
 
 #[test]
 fn small_bench() {

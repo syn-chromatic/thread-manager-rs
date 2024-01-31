@@ -1,5 +1,6 @@
-use std::sync::mpsc::RecvError;
 use std::sync::Arc;
+
+use crossbeam_channel::RecvError;
 
 use crate::channel::ResultChannel;
 use crate::worker::ThreadWorker;
