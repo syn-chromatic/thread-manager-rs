@@ -12,7 +12,6 @@ const WPC: usize = 1;
 
 #[test]
 fn small_bench() {
-    sleep(Duration::from_millis(500));
 
     tm_bench();
     tm_asymmetric_bench();
