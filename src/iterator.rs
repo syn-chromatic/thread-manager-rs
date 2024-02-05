@@ -1,8 +1,8 @@
-use std::sync::mpsc::RecvError;
 use std::sync::Arc;
 
+use crossbeam_channel::RecvError;
+
 use crate::channel::ResultChannel;
-use crate::types::FnType;
 use crate::worker::ThreadWorker;
 
 pub struct ResultIter<'a, T>
@@ -43,20 +43,22 @@ where
     }
 }
 
-pub struct YieldResultIter<'a, T>
+pub struct YieldResultIter<'a, F, T>
 where
+    F: Fn() -> T + Send + 'static,
     T: Send + 'static,
 {
-    workers: &'a Vec<ThreadWorker<FnType<T>, T>>,
+    workers: &'a Vec<ThreadWorker<F, T>>,
     result_channel: &'a Arc<ResultChannel<T>>,
 }
 
-impl<'a, T> YieldResultIter<'a, T>
+impl<'a, F, T> YieldResultIter<'a, F, T>
 where
+    F: Fn() -> T + Send + 'static,
     T: Send + 'static,
 {
     pub fn new(
-        workers: &'a Vec<ThreadWorker<FnType<T>, T>>,
+        workers: &'a Vec<ThreadWorker<F, T>>,
         result_channel: &'a Arc<ResultChannel<T>>,
     ) -> Self {
         Self {
@@ -79,8 +81,9 @@ where
     }
 }
 
-impl<'a, T> Iterator for YieldResultIter<'a, T>
+impl<'a, F, T> Iterator for YieldResultIter<'a, F, T>
 where
+    F: Fn() -> T + Send + 'static,
     T: Send + 'static,
 {
     type Item = T;

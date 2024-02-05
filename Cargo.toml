@@ -7,6 +7,14 @@ repository = "https://github.com/syn-chromatic/thread-manager-rs"
 authors = ["Synchromatic <synchromatic.github@gmail.com>"]
 categories = ["Concurrency"]
 keywords = ["thread", "pool", "manager", "parallel", "concurrent"]
-version = "0.9.8"
+version = "0.9.9"
 edition = "2021"
 license = "MIT"
+
+
+[dependencies]
+crossbeam-channel = "0.5.11"
+
+
+[profile.release]
+opt-level = 2
