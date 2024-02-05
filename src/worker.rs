@@ -164,17 +164,17 @@ where
 
     pub fn set_active(self: &Arc<Self>, state: bool) {
         self.worker_status.set_active(state);
-        self.manager_status.adjust_active(state);
-    }
-
-    pub fn set_busy(self: &Arc<Self>, state: bool) {
-        self.worker_status.set_busy(state);
-        self.manager_status.adjust_busy(state);
+        self.manager_status.set_active(state);
     }
 
     pub fn set_waiting(self: &Arc<Self>, state: bool) {
         self.worker_status.set_waiting(state);
-        self.manager_status.adjust_waiting(state);
+        self.manager_status.set_waiting(state);
+    }
+
+    pub fn set_busy(self: &Arc<Self>, state: bool) {
+        self.worker_status.set_busy(state);
+        self.manager_status.set_busy(state);
     }
 
     pub fn set_termination(self: &Arc<Self>, state: bool) {
@@ -225,7 +225,7 @@ where
             .send(job())
             .expect("Failed to send result");
 
-        self.job_channel.status().add_concluded();
+        self.job_channel.status().set_concluded(true);
         self.set_busy(false);
     }
 }

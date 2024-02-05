@@ -34,7 +34,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         if self.has_results() {
             let result: Result<T, RecvError> = self.result_channel.recv();
-            self.result_channel.status().add_concluded();
+            self.result_channel.status().set_concluded(true);
             if let Ok(result) = result {
                 return Some(result);
             }
@@ -91,7 +91,7 @@ where
     fn next(&mut self) -> Option<Self::Item> {
         if self.has_jobs() || self.has_results() {
             let result: Result<T, RecvError> = self.result_channel.recv();
-            self.result_channel.status().add_concluded();
+            self.result_channel.status().set_concluded(true);
             if let Ok(result) = result {
                 return Some(result);
             }

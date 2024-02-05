@@ -5,6 +5,20 @@ use crate::order::FETCH_ORDER;
 use crate::order::LOAD_ORDER;
 use crate::order::STORE_ORDER;
 
+pub enum Operation {
+    Add,
+    Sub,
+}
+
+impl Into<Operation> for bool {
+    fn into(self) -> Operation {
+        match self {
+            true => Operation::Add,
+            false => Operation::Sub,
+        }
+    }
+}
+
 pub struct ManagerStatus {
     active_threads: AtomicUsize,
     waiting_threads: AtomicUsize,
@@ -35,24 +49,33 @@ impl ManagerStatus {
         self.busy_threads.load(LOAD_ORDER)
     }
 
-    pub fn adjust_active(&self, state: bool) {
-        match state {
-            true => self.active_threads.fetch_add(1, FETCH_ORDER),
-            false => self.active_threads.fetch_sub(1, FETCH_ORDER),
+    pub fn set_active<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.active_threads.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.active_threads.fetch_sub(1, FETCH_ORDER),
         };
     }
 
-    pub fn adjust_waiting(&self, state: bool) {
-        match state {
-            true => self.waiting_threads.fetch_add(1, FETCH_ORDER),
-            false => self.waiting_threads.fetch_sub(1, FETCH_ORDER),
+    pub fn set_waiting<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.waiting_threads.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.waiting_threads.fetch_sub(1, FETCH_ORDER),
         };
     }
 
-    pub fn adjust_busy(&self, state: bool) {
-        match state {
-            true => self.busy_threads.fetch_add(1, FETCH_ORDER),
-            false => self.busy_threads.fetch_sub(1, FETCH_ORDER),
+    pub fn set_busy<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.busy_threads.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.busy_threads.fetch_sub(1, FETCH_ORDER),
         };
     }
 }
@@ -170,30 +193,53 @@ impl ChannelStatus {
         self.concluded.load(LOAD_ORDER)
     }
 
-    pub fn add_sent(&self) {
-        self.sent.fetch_add(1, FETCH_ORDER);
+    pub fn set_sent<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.sent.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.sent.fetch_sub(1, FETCH_ORDER),
+        };
     }
 
-    pub fn add_sending(&self) {
-        self.sending.fetch_add(1, FETCH_ORDER);
+    pub fn set_sending<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.sending.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.sending.fetch_sub(1, FETCH_ORDER),
+        };
     }
 
-    pub fn add_received(&self) {
-        self.received.fetch_add(1, FETCH_ORDER);
+    pub fn set_received<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.received.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.received.fetch_sub(1, FETCH_ORDER),
+        };
     }
 
-    pub fn add_receiving(&self) {
-        self.receiving.fetch_add(1, FETCH_ORDER);
-    }
-    pub fn add_concluded(&self) {
-        self.concluded.fetch_add(1, FETCH_ORDER);
+    pub fn set_receiving<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.receiving.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.receiving.fetch_sub(1, FETCH_ORDER),
+        };
     }
 
-    pub fn sub_sending(&self) {
-        self.sending.fetch_sub(1, FETCH_ORDER);
-    }
-
-    pub fn sub_receiving(&self) {
-        self.receiving.fetch_sub(1, FETCH_ORDER);
+    pub fn set_concluded<P>(&self, op: P)
+    where
+        P: Into<Operation>,
+    {
+        match op.into() {
+            Operation::Add => self.concluded.fetch_add(1, FETCH_ORDER),
+            Operation::Sub => self.concluded.fetch_sub(1, FETCH_ORDER),
+        };
     }
 }

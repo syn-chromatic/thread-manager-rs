@@ -39,12 +39,12 @@ impl<T> JobChannel<T> {
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<MessageKind<T>>> {
-        self.status.add_sending();
+        self.status.set_sending(true);
         let message: MessageKind<T> = MessageKind::Job(value);
         let result: Result<(), SendError<MessageKind<T>>> = self.sender.send(message);
-        self.status.sub_sending();
+        self.status.set_sending(false);
         if let Ok(_) = result {
-            self.status.add_sent();
+            self.status.set_sent(true);
             return Ok(());
         }
         Err(result.unwrap_err())
@@ -78,38 +78,38 @@ impl<T> JobChannel<T> {
     }
 
     pub fn recv(&self) -> Result<MessageKind<T>, RecvError> {
-        self.status.add_receiving();
+        self.status.set_receiving(true);
 
         if let Ok(message) = self.receiver.recv() {
             self.on_message_receive(&message);
             return Ok(message);
         }
 
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
         Err(RecvError)
     }
 
     pub fn try_recv(&self) -> Result<MessageKind<T>, TryRecvError> {
-        self.status.add_receiving();
+        self.status.set_receiving(true);
 
         if let Ok(message) = self.receiver.try_recv() {
             self.on_message_receive(&message);
             return Ok(message);
         }
 
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
         Err(TryRecvError::Disconnected)
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Result<MessageKind<T>, RecvTimeoutError> {
-        self.status.add_receiving();
+        self.status.set_receiving(true);
 
         if let Ok(message) = self.receiver.recv_timeout(timeout) {
             self.on_message_receive(&message);
             return Ok(message);
         }
 
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
         Err(RecvTimeoutError::Disconnected)
     }
 
@@ -132,10 +132,10 @@ impl<T> JobChannel<T> {
 impl<T> JobChannel<T> {
     fn on_message_receive(&self, message: &MessageKind<T>) {
         match message {
-            MessageKind::Job(_) => self.status.add_received(),
+            MessageKind::Job(_) => self.status.set_received(true),
             MessageKind::Release => {}
         }
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
     }
 }
 
@@ -162,11 +162,11 @@ impl<T> ResultChannel<T> {
     }
 
     pub fn send(&self, value: T) -> Result<(), SendError<T>> {
-        self.status.add_sending();
+        self.status.set_sending(true);
         let result: Result<(), SendError<T>> = self.sender.send(value);
-        self.status.sub_sending();
+        self.status.set_sending(false);
         if let Ok(_) = result {
-            self.status.add_sent();
+            self.status.set_sent(true);
             return Ok(());
         }
         Err(result.unwrap_err())
@@ -184,38 +184,38 @@ impl<T> ResultChannel<T> {
     }
 
     pub fn recv(&self) -> Result<T, RecvError> {
-        self.status.add_receiving();
+        self.status.set_receiving(true);
 
         if let Ok(result) = self.receiver.recv() {
             self.on_result_receive();
             return Ok(result);
         }
 
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
         Err(RecvError)
     }
 
     pub fn try_recv(&self) -> Result<T, TryRecvError> {
-        self.status.add_receiving();
+        self.status.set_receiving(true);
 
         if let Ok(result) = self.receiver.try_recv() {
             self.on_result_receive();
             return Ok(result);
         }
 
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
         Err(TryRecvError::Disconnected)
     }
 
     pub fn recv_timeout(&self, timeout: Duration) -> Result<T, RecvTimeoutError> {
-        self.status.add_receiving();
+        self.status.set_receiving(true);
 
         if let Ok(result) = self.receiver.recv_timeout(timeout) {
             self.on_result_receive();
             return Ok(result);
         }
 
-        self.status.sub_receiving();
+        self.status.set_receiving(false);
         Err(RecvTimeoutError::Disconnected)
     }
 
@@ -237,7 +237,7 @@ impl<T> ResultChannel<T> {
 
 impl<T> ResultChannel<T> {
     fn on_result_receive(&self) {
-        self.status.add_received();
-        self.status.sub_receiving();
+        self.status.set_received(true);
+        self.status.set_receiving(false);
     }
 }
