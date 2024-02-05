@@ -35,6 +35,8 @@ impl ThreadLooper {
     {
         if !self.is_active() {
             self.status.store(true, STORE_ORDER);
+            self.termination.store(false, STORE_ORDER);
+
             let thread: thread::JoinHandle<()> = thread::spawn(self.create(function));
             self.thread.set(Some(thread));
         }

@@ -57,7 +57,9 @@ where
     pub fn start(&self) {
         if !self.worker_status.is_active() {
             Self::set_active(&self.manager_status, &self.worker_status, true);
-            let thread: thread::JoinHandle<()> = thread::spawn(self.create_worker());
+            self.termination.store(false, STORE_ORDER);
+
+            let thread: thread::JoinHandle<()> = thread::spawn(self.create());
             self.thread.set(Some(thread));
         }
     }
@@ -114,7 +116,7 @@ where
         state: bool,
     ) {
         worker_status.set_active(state);
-        manager_status.set_active(state);
+        manager_status.adjust_active(state);
     }
 
     fn set_waiting(
@@ -123,7 +125,7 @@ where
         state: bool,
     ) {
         worker_status.set_waiting(state);
-        manager_status.set_waiting(state);
+        manager_status.adjust_waiting(state);
     }
 
     fn set_busy(
@@ -132,10 +134,10 @@ where
         state: bool,
     ) {
         worker_status.set_busy(state);
-        manager_status.set_busy(state);
+        manager_status.adjust_busy(state);
     }
 
-    fn worker_loop(
+    fn worker(
         termination: &Arc<AtomicBool>,
         job_channel: &Arc<JobChannel<F>>,
         result_channel: &Arc<ResultChannel<T>>,
@@ -151,9 +153,11 @@ where
                     MessageKind::Job(job) => {
                         worker_status.add_received();
                         Self::set_busy(&manager_status, &worker_status, true);
+
                         result_channel.send(job()).expect("Failed to send result");
-                        Self::set_busy(&manager_status, &worker_status, false);
+
                         job_channel.status().add_concluded();
+                        Self::set_busy(&manager_status, &worker_status, false);
                     }
                     MessageKind::Release => {
                         break;
@@ -163,7 +167,7 @@ where
         }
     }
 
-    fn create_worker(&self) -> impl Fn() {
+    fn create(&self) -> impl Fn() {
         let termination: Arc<AtomicBool> = self.termination.clone();
         let job_channel: Arc<JobChannel<F>> = self.job_channel.clone();
         let result_channel: Arc<ResultChannel<T>> = self.result_channel.clone();
@@ -171,7 +175,7 @@ where
         let worker_status: Arc<WorkerStatus> = self.worker_status.clone();
 
         let worker = move || {
-            Self::worker_loop(
+            Self::worker(
                 &termination,
                 &job_channel,
                 &result_channel,

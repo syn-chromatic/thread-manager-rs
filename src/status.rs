@@ -35,21 +35,21 @@ impl ManagerStatus {
         self.busy_threads.load(LOAD_ORDER)
     }
 
-    pub fn set_active(&self, state: bool) {
+    pub fn adjust_active(&self, state: bool) {
         match state {
             true => self.active_threads.fetch_add(1, FETCH_ORDER),
             false => self.active_threads.fetch_sub(1, FETCH_ORDER),
         };
     }
 
-    pub fn set_waiting(&self, state: bool) {
+    pub fn adjust_waiting(&self, state: bool) {
         match state {
             true => self.waiting_threads.fetch_add(1, FETCH_ORDER),
             false => self.waiting_threads.fetch_sub(1, FETCH_ORDER),
         };
     }
 
-    pub fn set_busy(&self, state: bool) {
+    pub fn adjust_busy(&self, state: bool) {
         match state {
             true => self.busy_threads.fetch_add(1, FETCH_ORDER),
             false => self.busy_threads.fetch_sub(1, FETCH_ORDER),

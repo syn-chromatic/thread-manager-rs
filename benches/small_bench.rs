@@ -4,14 +4,15 @@ use std::time::Duration;
 use std::time::Instant;
 
 use thread_manager::ThreadManager;
-use thread_manager::ThreadManagerStack;
+use thread_manager::ThreadManagerRaw;
 
-const ITERATIONS: usize = 1_000_000;
-const THREADS: usize = 1;
-const WPC: usize = 1;
+const ITERATIONS: usize = 10_000_000;
+const THREADS: usize = 16;
+const WPC: usize = 4;
 
 #[test]
 fn small_bench() {
+    sleep(Duration::from_millis(500));
 
     tm_bench();
     tm_asymmetric_bench();
@@ -70,7 +71,7 @@ fn tm_asymmetric_bench() {
 
 fn tm_stack_bench() {
     println!("[THREAD MANAGER STACK BENCH]");
-    let thread_manager: ThreadManagerStack<_, ()> = ThreadManagerStack::<_, ()>::new(THREADS);
+    let thread_manager: ThreadManagerRaw<_, ()> = ThreadManagerRaw::<_, ()>::new(THREADS);
     let now: Instant = Instant::now();
     for idx in 0..ITERATIONS {
         thread_manager.execute(move || black_box(small(idx)));
@@ -86,8 +87,8 @@ fn tm_stack_bench() {
 
 fn tm_stack_asymmetric_bench() {
     println!("[THREAD MANAGER STACK ASYMMETRIC BENCH]");
-    let thread_manager: ThreadManagerStack<_, ()> =
-        ThreadManagerStack::<_, ()>::new_asymmetric(THREADS, WPC);
+    let thread_manager: ThreadManagerRaw<_, ()> =
+        ThreadManagerRaw::<_, ()>::new_asymmetric(THREADS, WPC);
     let now: Instant = Instant::now();
     for idx in 0..ITERATIONS {
         thread_manager.execute(move || black_box(small(idx)));
