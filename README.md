@@ -28,6 +28,8 @@ ___
 
 #### `⤷` Basic Usage
 ```rust
+use thread_manager::ThreadManager;
+
 fn main() {
     // Create ThreadManager with 4 worker threads
     // ::<T> specifies return type for jobs
@@ -54,6 +56,8 @@ fn main() {
 
 #### `⤷` Retrieving Results
 ```rust
+use thread_manager::ThreadManager;
+
 fn main() {
     // Create ThreadManager with 4 worker threads
     // ::<T> specifies return type for jobs
@@ -83,6 +87,8 @@ fn main() {
 
 #### `⤷` Monitoring Status And Job Information
 ```rust
+use thread_manager::ThreadManager;
+
 fn main() {
     // ... Create thread manager and execute jobs
 
