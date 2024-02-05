@@ -51,15 +51,6 @@ impl ThreadLooper {
 }
 
 impl ThreadLooper {
-    fn looper<F>(function: &F, termination: &Arc<AtomicBool>)
-    where
-        F: Fn() -> () + Send + 'static,
-    {
-        while !termination.load(LOAD_ORDER) {
-            function();
-        }
-    }
-
     fn create<F>(&self, function: F) -> impl Fn()
     where
         F: Fn() -> () + Send + 'static,
@@ -68,7 +59,9 @@ impl ThreadLooper {
         let termination: Arc<AtomicBool> = self.termination.clone();
 
         let worker = move || {
-            Self::looper(&function, &termination);
+            while !termination.load(LOAD_ORDER) {
+                function();
+            }
             status.store(false, STORE_ORDER);
             termination.store(false, STORE_ORDER);
         };

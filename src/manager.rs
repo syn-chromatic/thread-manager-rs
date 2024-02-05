@@ -11,93 +11,6 @@ use crate::worker::ThreadWorker;
 
 type FnType<T> = Box<dyn Fn() -> T + Send + 'static>;
 
-pub struct ThreadManager<T>
-where
-    T: Send + 'static,
-{
-    manager: ThreadManagerRaw<FnType<T>, T>,
-}
-
-impl<T> ThreadManager<T>
-where
-    T: Send + 'static,
-{
-    pub fn new(size: usize) -> Self {
-        Self {
-            manager: ThreadManagerRaw::new(size),
-        }
-    }
-
-    pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
-        Self {
-            manager: ThreadManagerRaw::new_asymmetric(size, wpc),
-        }
-    }
-
-    pub fn execute<F>(&self, function: F)
-    where
-        F: Fn() -> T + Send + 'static,
-    {
-        self.manager.execute(Box::new(function))
-    }
-
-    pub fn resize(&mut self, size: usize) {
-        self.manager.resize(size)
-    }
-
-    pub fn join(&self) {
-        self.manager.join();
-    }
-
-    pub fn terminate_all(&self) {
-        self.manager.terminate_all()
-    }
-
-    pub fn job_distribution(&self) -> Vec<usize> {
-        self.manager.job_distribution()
-    }
-
-    pub fn has_finished(&self) -> bool {
-        self.manager.has_finished()
-    }
-
-    pub fn results<'a>(&'a self) -> ResultIter<'a, T> {
-        self.manager.results()
-    }
-
-    pub fn yield_results<'a>(&'a self) -> YieldResultIter<'a, FnType<T>, T> {
-        self.manager.yield_results()
-    }
-
-    pub fn active_threads(&self) -> usize {
-        self.manager.active_threads()
-    }
-
-    pub fn busy_threads(&self) -> usize {
-        self.manager.busy_threads()
-    }
-
-    pub fn waiting_threads(&self) -> usize {
-        self.manager.waiting_threads()
-    }
-
-    pub fn job_queue(&self) -> usize {
-        self.manager.job_queue()
-    }
-
-    pub fn sent_jobs(&self) -> usize {
-        self.manager.sent_jobs()
-    }
-
-    pub fn received_jobs(&self) -> usize {
-        self.manager.received_jobs()
-    }
-
-    pub fn concluded_jobs(&self) -> usize {
-        self.manager.concluded_jobs()
-    }
-}
-
 pub struct ThreadManagerRaw<F, T>
 where
     F: Fn() -> T + Send + 'static,
@@ -346,5 +259,90 @@ where
 {
     fn drop(&mut self) {
         self.terminate_all();
+    }
+}
+
+pub struct ThreadManager<T>
+where
+    T: Send + 'static,
+{
+    manager: ThreadManagerRaw<FnType<T>, T>,
+}
+
+impl<T> ThreadManager<T>
+where
+    T: Send + 'static,
+{
+    pub fn new(size: usize) -> Self {
+        let manager: ThreadManagerRaw<FnType<T>, T> = ThreadManagerRaw::new(size);
+        Self { manager }
+    }
+
+    pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
+        let manager: ThreadManagerRaw<FnType<T>, T> = ThreadManagerRaw::new_asymmetric(size, wpc);
+        Self { manager }
+    }
+
+    pub fn execute<F>(&self, function: F)
+    where
+        F: Fn() -> T + Send + 'static,
+    {
+        self.manager.execute(Box::new(function))
+    }
+
+    pub fn resize(&mut self, size: usize) {
+        self.manager.resize(size)
+    }
+
+    pub fn join(&self) {
+        self.manager.join();
+    }
+
+    pub fn terminate_all(&self) {
+        self.manager.terminate_all()
+    }
+
+    pub fn job_distribution(&self) -> Vec<usize> {
+        self.manager.job_distribution()
+    }
+
+    pub fn has_finished(&self) -> bool {
+        self.manager.has_finished()
+    }
+
+    pub fn results<'a>(&'a self) -> ResultIter<'a, T> {
+        self.manager.results()
+    }
+
+    pub fn yield_results<'a>(&'a self) -> YieldResultIter<'a, FnType<T>, T> {
+        self.manager.yield_results()
+    }
+
+    pub fn active_threads(&self) -> usize {
+        self.manager.active_threads()
+    }
+
+    pub fn busy_threads(&self) -> usize {
+        self.manager.busy_threads()
+    }
+
+    pub fn waiting_threads(&self) -> usize {
+        self.manager.waiting_threads()
+    }
+
+    pub fn job_queue(&self) -> usize {
+        self.manager.job_queue()
+    }
+
+    pub fn sent_jobs(&self) -> usize {
+        self.manager.sent_jobs()
+    }
+
+    pub fn received_jobs(&self) -> usize {
+        self.manager.received_jobs()
+    }
+
+    pub fn concluded_jobs(&self) -> usize {
+        self.manager.concluded_jobs()
     }
 }
