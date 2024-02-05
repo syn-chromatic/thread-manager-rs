@@ -328,7 +328,7 @@ where
 
     fn set_termination_workers(&self, st: usize, en: usize) {
         for worker in self.workers[st..en].iter() {
-            worker.set_termination();
+            worker.set_termination(true);
         }
     }
 
