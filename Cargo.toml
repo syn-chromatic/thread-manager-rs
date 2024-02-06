@@ -7,7 +7,7 @@ repository = "https://github.com/syn-chromatic/thread-manager-rs"
 authors = ["Synchromatic <synchromatic.github@gmail.com>"]
 categories = ["Concurrency"]
 keywords = ["thread", "pool", "manager", "parallel", "concurrent"]
-version = "0.9.11"
+version = "0.9.12"
 edition = "2021"
 license = "MIT"
 

@@ -11,6 +11,20 @@ use crate::worker::ThreadWorker;
 
 type FnType<T> = Box<dyn Fn() -> T + Send + 'static>;
 
+/// A thread manager for executing jobs in parallel.
+/// This struct manages a pool of worker threads and distributes jobs among them.
+///
+/// # Type Parameters
+/// - `F`: The type of the function or closure that the threads will execute.
+/// - `T`: The type of the value returned by the function or closure.
+///
+/// # Fields
+/// - `wpc`: The number of Workers-Per-Channel.
+/// - `dispatch`: An instance of `DispatchCycle` to manage job distribution.
+/// - `workers`: A vector of `ThreadWorker` instances representing the worker threads.
+/// - `channels`: A vector of job channels for dispatching jobs to workers.
+/// - `result_channel`: A channel for collecting the results of the jobs.
+/// - `manager_status`: An instance of `ManagerStatus` to track the status of the manager.
 pub struct ThreadManagerRaw<F, T>
 where
     F: Fn() -> T + Send + 'static,
@@ -29,6 +43,13 @@ where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
 {
+    /// Creates a new instance of `ThreadManagerRaw` with a specified number of worker threads.
+    ///
+    /// # Arguments
+    /// - `size`: The number of worker threads to create.
+    ///
+    /// # Returns
+    /// A new instance of `ThreadManagerRaw`.
     pub fn new(size: usize) -> Self {
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<F, T>> = Vec::with_capacity(size);
@@ -48,6 +69,15 @@ where
         manager
     }
 
+    /// Creates a new instance of `ThreadManagerRaw` with a specified number of worker threads
+    /// and a specific workers-per-channel ratio.
+    ///
+    /// # Arguments
+    /// - `size`: The number of worker threads to create.
+    /// - `wpc`: The number of workers per channel.
+    ///
+    /// # Returns
+    /// A new instance of `ThreadManagerRaw` with the specified configuration.
     pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<F, T>> = Vec::with_capacity(size);
@@ -67,12 +97,20 @@ where
         manager
     }
 
+    /// Executes a given function by sending it to an available worker thread.
+    ///
+    /// # Arguments
+    /// - `function`: The function to be executed by the worker thread.
     pub fn execute(&self, function: F) {
         let id: usize = self.dispatch.fetch_and_update();
         let worker: &ThreadWorker<F, T> = &self.workers[id];
         worker.send(function);
     }
 
+    /// Resizes the pool of worker threads.
+    ///
+    /// # Arguments
+    /// - `size`: The new size of the worker pool.
     pub fn resize(&mut self, size: usize) {
         assert_wpc(size, self.wpc);
         let dispatch_size: usize = self.dispatch.fetch_size();
@@ -262,6 +300,11 @@ where
     }
 }
 
+/// A simplified version of `ThreadManagerRaw` for managing threads that execute functions
+/// returning a specific type `T`.
+///
+/// # Type Parameters
+/// - `T`: The type of the value returned by the functions executed by the threads.
 pub struct ThreadManager<T>
 where
     T: Send + 'static,
@@ -273,16 +316,39 @@ impl<T> ThreadManager<T>
 where
     T: Send + 'static,
 {
+    /// Creates a new instance of `ThreadManager` with a specified number of worker threads.
+    ///
+    /// # Arguments
+    /// - `size`: The number of worker threads to create.
+    ///
+    /// # Returns
+    /// A new instance of `ThreadManager`.
     pub fn new(size: usize) -> Self {
         let manager: ThreadManagerRaw<FnType<T>, T> = ThreadManagerRaw::new(size);
         Self { manager }
     }
 
+    /// Creates a new instance of `ThreadManager` with a specified number of worker threads
+    /// and a specific workers-per-channel ratio.
+    ///
+    /// # Arguments
+    /// - `size`: The number of worker threads to create.
+    /// - `wpc`: The number of workers per channel.
+    ///
+    /// # Returns
+    /// A new instance of `ThreadManager` with the specified configuration.
     pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
         let manager: ThreadManagerRaw<FnType<T>, T> = ThreadManagerRaw::new_asymmetric(size, wpc);
         Self { manager }
     }
 
+    /// Executes a given function by sending it to an available worker thread.
+    ///
+    /// # Type Parameters
+    /// - `F`: The type of the function to execute.
+    ///
+    /// # Arguments
+    /// - `function`: The function to be executed by the worker thread.
     pub fn execute<F>(&self, function: F)
     where
         F: Fn() -> T + Send + 'static,
@@ -290,6 +356,10 @@ where
         self.manager.execute(Box::new(function))
     }
 
+    /// Resizes the pool of worker threads.
+    ///
+    /// # Arguments
+    /// - `size`: The new size of the worker pool.
     pub fn resize(&mut self, size: usize) {
         self.manager.resize(size)
     }
