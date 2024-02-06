@@ -199,12 +199,8 @@ where
 
             if let Ok(message) = recv {
                 match message {
-                    MessageKind::Job(job) => {
-                        self.job_recv(job);
-                    }
-                    MessageKind::Release => {
-                        break;
-                    }
+                    MessageKind::Job(job) => self.job_recv(job),
+                    MessageKind::Release => break,
                 }
             }
         }
