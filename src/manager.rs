@@ -79,6 +79,7 @@ where
     /// # Returns
     /// A new instance of `ThreadManagerRaw` with the specified configuration.
     pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
+        assert_wpc(size, wpc);
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<F, T>> = Vec::with_capacity(size);
         let channels: Vec<Arc<JobChannel<F>>> = Vec::with_capacity(size);
