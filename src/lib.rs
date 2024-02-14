@@ -9,7 +9,7 @@ mod status;
 mod worker;
 
 pub use manager::ThreadManager;
-pub use manager::ThreadManagerRaw;
+pub use manager::ThreadManagerCore;
 
 pub use looper::ThreadLooper;
 

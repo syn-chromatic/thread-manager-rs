@@ -4,7 +4,7 @@ use std::time::Duration;
 use std::time::Instant;
 
 use thread_manager::ThreadManager;
-use thread_manager::ThreadManagerRaw;
+use thread_manager::ThreadManagerCore;
 
 const ITERATIONS: usize = 10_000_000;
 const THREADS: usize = 16;
@@ -71,7 +71,7 @@ fn tm_asymmetric_bench() {
 
 fn tm_stack_bench() {
     println!("[THREAD MANAGER STACK BENCH]");
-    let thread_manager: ThreadManagerRaw<_, ()> = ThreadManagerRaw::<_, ()>::new(THREADS);
+    let thread_manager: ThreadManagerCore<_, ()> = ThreadManagerCore::<_, ()>::new(THREADS);
     let now: Instant = Instant::now();
     for idx in 0..ITERATIONS {
         thread_manager.execute(move || black_box(small(idx)));
@@ -87,8 +87,8 @@ fn tm_stack_bench() {
 
 fn tm_stack_asymmetric_bench() {
     println!("[THREAD MANAGER STACK ASYMMETRIC BENCH]");
-    let thread_manager: ThreadManagerRaw<_, ()> =
-        ThreadManagerRaw::<_, ()>::new_asymmetric(THREADS, WPC);
+    let thread_manager: ThreadManagerCore<_, ()> =
+        ThreadManagerCore::<_, ()>::new_asymmetric(THREADS, WPC);
     let now: Instant = Instant::now();
     for idx in 0..ITERATIONS {
         thread_manager.execute(move || black_box(small(idx)));

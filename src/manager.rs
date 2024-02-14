@@ -25,7 +25,7 @@ type FnType<T> = Box<dyn Fn() -> T + Send + 'static>;
 /// - `channels`: A vector of job channels for dispatching jobs to workers.
 /// - `result_channel`: A channel for collecting the results of the jobs.
 /// - `manager_status`: An instance of `ManagerStatus` to track the status of the manager.
-pub struct ThreadManagerRaw<F, T>
+pub struct ThreadManagerCore<F, T>
 where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
@@ -38,18 +38,18 @@ where
     manager_status: Arc<ManagerStatus>,
 }
 
-impl<F, T> ThreadManagerRaw<F, T>
+impl<F, T> ThreadManagerCore<F, T>
 where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
 {
-    /// Creates a new instance of `ThreadManagerRaw` with a specified number of worker threads.
+    /// Creates a new instance of `ThreadManagerCore` with a specified number of worker threads.
     ///
     /// # Arguments
     /// - `size`: The number of worker threads to create.
     ///
     /// # Returns
-    /// A new instance of `ThreadManagerRaw`.
+    /// A new instance of `ThreadManagerCore`.
     pub fn new(size: usize) -> Self {
         let dispatch: DispatchCycle = DispatchCycle::new(size);
         let workers: Vec<ThreadWorker<F, T>> = Vec::with_capacity(size);
@@ -57,7 +57,7 @@ where
         let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
 
-        let mut manager: ThreadManagerRaw<F, T> = Self {
+        let mut manager: ThreadManagerCore<F, T> = Self {
             wpc: 1,
             dispatch,
             workers,
@@ -69,7 +69,7 @@ where
         manager
     }
 
-    /// Creates a new instance of `ThreadManagerRaw` with a specified number of worker threads
+    /// Creates a new instance of `ThreadManagerCore` with a specified number of worker threads
     /// and a specific workers-per-channel ratio.
     ///
     /// # Arguments
@@ -77,7 +77,7 @@ where
     /// - `wpc`: The number of workers per channel.
     ///
     /// # Returns
-    /// A new instance of `ThreadManagerRaw` with the specified configuration.
+    /// A new instance of `ThreadManagerCore` with the specified configuration.
     pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
         assert_wpc(size, wpc);
         let dispatch: DispatchCycle = DispatchCycle::new(size);
@@ -86,7 +86,7 @@ where
         let result_channel: Arc<ResultChannel<T>> = Arc::new(ResultChannel::new());
         let manager_status: Arc<ManagerStatus> = Arc::new(ManagerStatus::new());
 
-        let mut manager: ThreadManagerRaw<F, T> = Self {
+        let mut manager: ThreadManagerCore<F, T> = Self {
             wpc,
             dispatch,
             workers,
@@ -131,7 +131,7 @@ where
     }
 }
 
-impl<F, T> ThreadManagerRaw<F, T>
+impl<F, T> ThreadManagerCore<F, T>
 where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
@@ -167,7 +167,7 @@ where
     }
 }
 
-impl<F, T> ThreadManagerRaw<F, T>
+impl<F, T> ThreadManagerCore<F, T>
 where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
@@ -255,7 +255,7 @@ where
     }
 }
 
-impl<F, T> ThreadManagerRaw<F, T>
+impl<F, T> ThreadManagerCore<F, T>
 where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
@@ -291,7 +291,7 @@ where
     }
 }
 
-impl<F, T> Drop for ThreadManagerRaw<F, T>
+impl<F, T> Drop for ThreadManagerCore<F, T>
 where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
@@ -301,7 +301,7 @@ where
     }
 }
 
-/// A simplified version of `ThreadManagerRaw` for managing threads that execute functions
+/// A dynamic dispatch version of `ThreadManagerCore` for managing threads that execute functions
 /// returning a specific type `T`.
 ///
 /// # Type Parameters
@@ -310,7 +310,7 @@ pub struct ThreadManager<T>
 where
     T: Send + 'static,
 {
-    manager: ThreadManagerRaw<FnType<T>, T>,
+    manager: ThreadManagerCore<FnType<T>, T>,
 }
 
 impl<T> ThreadManager<T>
@@ -325,7 +325,7 @@ where
     /// # Returns
     /// A new instance of `ThreadManager`.
     pub fn new(size: usize) -> Self {
-        let manager: ThreadManagerRaw<FnType<T>, T> = ThreadManagerRaw::new(size);
+        let manager: ThreadManagerCore<FnType<T>, T> = ThreadManagerCore::new(size);
         Self { manager }
     }
 
@@ -339,7 +339,7 @@ where
     /// # Returns
     /// A new instance of `ThreadManager` with the specified configuration.
     pub fn new_asymmetric(size: usize, wpc: usize) -> Self {
-        let manager: ThreadManagerRaw<FnType<T>, T> = ThreadManagerRaw::new_asymmetric(size, wpc);
+        let manager: ThreadManagerCore<FnType<T>, T> = ThreadManagerCore::new_asymmetric(size, wpc);
         Self { manager }
     }
 
