@@ -2,12 +2,12 @@
 
 [package]
 name = "thread-manager"
-description = "Simple and efficient way to manage a pool of threads for executing jobs in parallel."
+description = "A streamlined Rust library for efficient thread pooling and parallel job execution, designed for simplicity, flexibility, and performance."
 repository = "https://github.com/syn-chromatic/thread-manager-rs"
 authors = ["Synchromatic <synchromatic.github@gmail.com>"]
 categories = ["Concurrency"]
 keywords = ["thread", "pool", "manager", "parallel", "concurrent"]
-version = "0.10.0"
+version = "1.0.0"
 edition = "2021"
 license = "MIT"
 
@@ -15,6 +15,3 @@ license = "MIT"
 [dependencies]
 crossbeam-channel = "0.5.11"
 
-
-[profile.release]
-opt-level = 2

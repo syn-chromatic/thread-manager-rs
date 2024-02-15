@@ -1,12 +1,12 @@
 ## `⌽` Thread Manager
-Thread Manager is a Rust library that provides a simple and efficient way to manage a pool of threads for executing jobs in parallel.
+Thread Manager is a streamlined Rust library for efficient thread pooling and parallel job execution, designed for simplicity, flexibility, and performance.
 
-It is designed to abstract away the complexities of thread management and provides a convenient interface for parallelizing workloads.
+It is designed to abstract away the complexities of thread management and provides a convenient interface for parallelizing workloads and retrieving results.
 
 
 #### Add to `Cargo.toml`
 ```
-thread-manager = "*"
+thread-manager = "1.0"
 ```
 
 
@@ -123,7 +123,7 @@ fn main() {
 
 ___
 ### `➢` To-Do
-- [ ] — Add documentation
+- [x] — Add documentation
 
 
 ___

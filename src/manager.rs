@@ -172,12 +172,20 @@ where
     F: Fn() -> T + Send + 'static,
     T: Send + 'static,
 {
+    /// Joins all worker threads, effectively blocking the current thread until all worker threads have completed their execution.
+    ///
+    /// # Note
+    /// This method will block the current thread until all worker threads have finished processing their jobs.
     pub fn join(&self) {
         self.send_release_workers(0, self.workers.len());
         self.join_workers(0, self.workers.len());
         self.clear_channels(0, self.channels.len());
     }
 
+    /// Terminates all worker threads gracefully.
+    ///
+    /// # Note
+    /// This method will block until the currently executing job among threads is completed.
     pub fn terminate_all(&self) {
         self.set_termination_workers(0, self.workers.len());
         self.send_release_workers(0, self.workers.len());
@@ -185,6 +193,10 @@ where
         self.clear_channels(0, self.channels.len());
     }
 
+    /// Provides the job distribution across the worker threads.
+    ///
+    /// # Returns
+    /// A vector containing the count of jobs executed by each worker thread.
     pub fn job_distribution(&self) -> Vec<usize> {
         let mut distribution: Vec<usize> = Vec::with_capacity(self.workers.len());
         for worker in self.workers.iter() {
@@ -193,6 +205,10 @@ where
         distribution
     }
 
+    /// Checks if all jobs have been finished.
+    ///
+    /// # Returns
+    /// `true` if all jobs are finished, `false` otherwise.
     pub fn has_finished(&self) -> bool {
         for job_channel in self.channels.iter() {
             if !job_channel.is_finished() {
@@ -202,26 +218,51 @@ where
         true
     }
 
+    /// Retrieves an iterator over the results of completed jobs.
+    ///
+    /// # Returns
+    /// An iterator (`ResultIter`) over the results of the jobs that have been completed.
     pub fn results<'a>(&'a self) -> ResultIter<'a, T> {
         ResultIter::new(&self.result_channel)
     }
 
+    /// Retrieves an iterator that yields results as they become available.
+    ///
+    /// # Returns
+    /// An iterator (`YieldResultIter`) that yields results from worker threads.
+    /// This method blocks for each result until the job queue is complete.
     pub fn yield_results<'a>(&'a self) -> YieldResultIter<'a, F, T> {
         YieldResultIter::new(&self.workers, &self.result_channel)
     }
 
+    /// Returns the number of active worker threads (both busy and waiting).
+    ///
+    /// # Returns
+    /// The total number of active worker threads.
     pub fn active_threads(&self) -> usize {
         self.manager_status.active_threads()
     }
 
+    /// Returns the number of worker threads that are currently busy executing a job.
+    ///
+    /// # Returns
+    /// The number of busy worker threads.
     pub fn busy_threads(&self) -> usize {
         self.manager_status.busy_threads()
     }
 
+    /// Returns the number of worker threads that are currently waiting for a job.
+    ///
+    /// # Returns
+    /// The number of waiting worker threads.
     pub fn waiting_threads(&self) -> usize {
         self.manager_status.waiting_threads()
     }
 
+    /// Returns the number of jobs currently in the queue waiting to be executed.
+    ///
+    /// # Returns
+    /// The size of the job queue.
     pub fn job_queue(&self) -> usize {
         let mut queue: usize = 0;
         for job_channel in self.channels.iter() {
@@ -230,6 +271,10 @@ where
         queue
     }
 
+    /// Returns the total number of jobs that have been sent to worker threads.
+    ///
+    /// # Returns
+    /// The number of sent jobs.
     pub fn sent_jobs(&self) -> usize {
         let mut sent: usize = 0;
         for job_channel in self.channels.iter() {
@@ -238,6 +283,10 @@ where
         sent
     }
 
+    /// Returns the total number of jobs that have been received by worker threads.
+    ///
+    /// # Returns
+    /// The number of received jobs.
     pub fn received_jobs(&self) -> usize {
         let mut received: usize = 0;
         for job_channel in self.channels.iter() {
@@ -246,6 +295,10 @@ where
         received
     }
 
+    /// Returns the total number of jobs that have been concluded by worker threads.
+    ///
+    /// # Returns
+    /// The number of concluded jobs.
     pub fn concluded_jobs(&self) -> usize {
         let mut concluded: usize = 0;
         for job_channel in self.channels.iter() {
@@ -365,54 +418,107 @@ where
         self.manager.resize(size)
     }
 
+    /// Joins all worker threads, effectively blocking the current thread until all worker threads have completed their execution.
+    ///
+    /// # Note
+    /// This method will block the current thread until all worker threads have finished processing their jobs.
     pub fn join(&self) {
         self.manager.join();
     }
 
+    /// Terminates all worker threads gracefully.
+    ///
+    /// # Note
+    /// This method will block until the currently executing job among threads is completed.
     pub fn terminate_all(&self) {
         self.manager.terminate_all()
     }
 
+    /// Provides the job distribution across the worker threads.
+    ///
+    /// # Returns
+    /// A vector containing the count of jobs executed by each worker thread.
     pub fn job_distribution(&self) -> Vec<usize> {
         self.manager.job_distribution()
     }
 
+    /// Checks if all jobs have been finished.
+    ///
+    /// # Returns
+    /// `true` if all jobs are finished, `false` otherwise.
     pub fn has_finished(&self) -> bool {
         self.manager.has_finished()
     }
 
+    /// Retrieves an iterator over the results of completed jobs.
+    ///
+    /// # Returns
+    /// An iterator (`ResultIter`) over the results of the jobs that have been completed.
     pub fn results<'a>(&'a self) -> ResultIter<'a, T> {
         self.manager.results()
     }
 
+    /// Retrieves an iterator that yields results as they become available.
+    ///
+    /// # Returns
+    /// An iterator (`YieldResultIter`) that yields results from worker threads.
+    /// This method blocks for each result until the job queue is complete.
     pub fn yield_results<'a>(&'a self) -> YieldResultIter<'a, FnType<T>, T> {
         self.manager.yield_results()
     }
 
+    /// Returns the number of active worker threads (both busy and waiting).
+    ///
+    /// # Returns
+    /// The total number of active worker threads.
     pub fn active_threads(&self) -> usize {
         self.manager.active_threads()
     }
 
+    /// Returns the number of worker threads that are currently busy executing a job.
+    ///
+    /// # Returns
+    /// The number of busy worker threads.
     pub fn busy_threads(&self) -> usize {
         self.manager.busy_threads()
     }
 
+    /// Returns the number of worker threads that are currently waiting for a job.
+    ///
+    /// # Returns
+    /// The number of waiting worker threads.
     pub fn waiting_threads(&self) -> usize {
         self.manager.waiting_threads()
     }
 
+    /// Returns the number of jobs currently in the queue waiting to be executed.
+    ///
+    /// # Returns
+    /// The size of the job queue.
     pub fn job_queue(&self) -> usize {
         self.manager.job_queue()
     }
 
+    /// Returns the total number of jobs that have been sent to worker threads.
+    ///
+    /// # Returns
+    /// The number of sent jobs.
     pub fn sent_jobs(&self) -> usize {
         self.manager.sent_jobs()
     }
 
+    /// Returns the total number of jobs that have been received by worker threads.
+    ///
+    /// # Returns
+    /// The number of received jobs.
     pub fn received_jobs(&self) -> usize {
         self.manager.received_jobs()
     }
 
+    /// Returns the total number of jobs that have been concluded by worker threads.
+    ///
+    /// # Returns
+    /// The number of concluded jobs.
     pub fn concluded_jobs(&self) -> usize {
         self.manager.concluded_jobs()
     }

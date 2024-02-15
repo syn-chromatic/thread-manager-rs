@@ -20,6 +20,7 @@ where
         Self { result_channel }
     }
 
+    /// Checks if results are available.
     pub fn has_results(&self) -> bool {
         !self.result_channel.is_finished()
     }
@@ -67,6 +68,7 @@ where
         }
     }
 
+    /// Checks if jobs are pending in the queue.
     pub fn has_jobs(&self) -> bool {
         for worker in self.workers.iter() {
             if !worker.job_channel().is_finished() {
@@ -76,6 +78,7 @@ where
         false
     }
 
+    /// Checks if results are available.
     pub fn has_results(&self) -> bool {
         !self.result_channel.is_finished()
     }
